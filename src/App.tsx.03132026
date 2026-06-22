@@ -1,0 +1,476 @@
+import { useState, useMemo } from "react";
+
+// 2026 Federal ordinary income brackets MFJ (estimated)
+const FED_BRACKETS = [
+  { min: 0,        max: 23850,   rate: 0.10 },
+  { min: 23850,    max: 96950,   rate: 0.12 },
+  { min: 96950,    max: 206700,  rate: 0.22 },
+  { min: 206700,   max: 394600,  rate: 0.24 },
+  { min: 394600,   max: 501050,  rate: 0.32 },
+  { min: 501050,   max: 751600,  rate: 0.35 },
+  { min: 751600,   max: Infinity,rate: 0.37 },
+];
+const FED_STD_MFJ      = 34700;  // $30,000 base + $1,600×2 existing senior add-on (both 65+)
+const OBBBA_PER_PERSON = 6000;   // 2025-2028, up to $6,000 per qualifying senior
+const OBBBA_PHASEOUT_START_MFJ = 150000;
+const OBBBA_PHASEOUT_RATE      = 0.06;  // 6 cents per dollar over threshold
+
+// OBBBA senior deduction — phases out 6% per dollar above $150K MAGI (MFJ)
+// numSeniors = number of spouses age 65+ (1 or 2)
+function obbbaDed(magi, numSeniors) {
+  const perPerson = Math.max(0, OBBBA_PER_PERSON - OBBBA_PHASEOUT_RATE * Math.max(0, magi - OBBBA_PHASEOUT_START_MFJ));
+  return perPerson * numSeniors;
+}
+
+// 2026 Federal LTCG brackets MFJ (estimated)
+const LTCG_BRACKETS = [
+  { min: 0,        max: 96700,   rate: 0.00 },
+  { min: 96700,    max: 600050,  rate: 0.15 },
+  { min: 600050,   max: Infinity,rate: 0.20 },
+];
+
+// NJ brackets MFJ
+const NJ_BRACKETS = [
+  { min: 0,        max: 20000,   rate: 0.01400 },
+  { min: 20000,    max: 50000,   rate: 0.01750 },
+  { min: 50000,    max: 70000,   rate: 0.02450 },
+  { min: 70000,    max: 80000,   rate: 0.03500 },
+  { min: 80000,    max: 150000,  rate: 0.05525 },
+  { min: 150000,   max: 500000,  rate: 0.06370 },
+  { min: 500000,   max: Infinity,rate: 0.08970 },
+];
+const NJ_EXEMPTION = 4000;
+const NJ_RIE_MAX   = 100000; // NJ Retirement Income Exclusion MFJ max
+const NJ_RIE_CLIFF = 150000; // No exclusion above this income
+
+function calcTax(income, brackets) {
+  let tax = 0;
+  for (const b of brackets) {
+    if (income <= b.min) break;
+    tax += (Math.min(income, b.max) - b.min) * b.rate;
+  }
+  return Math.max(0, tax);
+}
+
+// Federal tax with LTCG preferential rates + OBBBA senior deduction
+function calcFedTax(ordinaryIncome, ltcgIncome, magi, numSeniors) {
+  const obbba      = obbbaDed(magi, numSeniors);
+  const ordTaxable = Math.max(0, ordinaryIncome - FED_STD_MFJ - obbba);
+  const ordTax     = calcTax(ordTaxable, FED_BRACKETS);
+  const ltcgTax    = calcTax(ordTaxable + ltcgIncome, LTCG_BRACKETS) - calcTax(ordTaxable, LTCG_BRACKETS);
+  return ordTax + Math.max(0, ltcgTax);
+}
+
+// NJ Retirement Income Exclusion — stepped phase-out by total income
+function njRIEFraction(totalIncome) {
+  if (totalIncome <  100000) return 1.00;
+  if (totalIncome <  125000) return 0.50;
+  if (totalIncome <  150000) return 0.25;
+  return 0;
+}
+
+// NJ tax with RIE phase-out
+function calcNJTax(totalNJIncome, annuityIncome) {
+  const rieFrac = njRIEFraction(totalNJIncome);
+  const rie     = Math.min(annuityIncome, NJ_RIE_MAX) * rieFrac;
+  const taxable = Math.max(0, totalNJIncome - rie - NJ_EXEMPTION);
+  return calcTax(taxable, NJ_BRACKETS);
+}
+
+// Annualization periods: cumulative Jan 1 through end of period
+const PERIODS = [
+  { label: "Q1", range: "Jan–Mar",  months: 3,  factor: 4.0,  due: "Apr 15, 2026",  wFrac: 3/12  },
+  { label: "Q2", range: "Apr–May",  months: 5,  factor: 2.4,  due: "Jun 16, 2026",  wFrac: 5/12  },
+  { label: "Q3", range: "Jun–Aug",  months: 8,  factor: 1.5,  due: "Sep 15, 2026",  wFrac: 8/12  },
+  { label: "Q4", range: "Sep–Dec",  months: 12, factor: 1.0,  due: "Jan 15, 2027",  wFrac: 12/12 },
+];
+
+const fmt = n => "$" + Math.round(Math.max(0, n)).toLocaleString();
+
+function calcAllMethods({ annuity, dividends, ss, capGains, conversion, convQ, priorFed, priorNJ, withholding, numSeniors }) {
+  const ssTaxable = ss * 0.85;
+
+  // Ordinary income (non-capgains) for federal
+  const regOrdFed   = annuity + dividends + ssTaxable;
+  const totalOrdFed = regOrdFed + conversion;
+  const regMAGI     = regOrdFed   + capGains;
+  const totalMAGI   = totalOrdFed + capGains;
+
+  // Full year federal tax
+  const fullFedTax = calcFedTax(totalOrdFed, capGains, totalMAGI, numSeniors);
+  const regFedTax  = calcFedTax(regOrdFed,   capGains, regMAGI,   numSeniors);
+
+  // OBBBA deduction amounts for display
+  const obbbaFull = obbbaDed(totalMAGI, numSeniors);
+  const obbbaReg  = obbbaDed(regMAGI,   numSeniors);
+
+  // NJ income (SS exempt; cap gains taxed as ordinary in NJ)
+  const regNJInc   = annuity + dividends + capGains;
+  const totalNJInc = regNJInc + conversion;
+
+  // Full year NJ tax with RIE
+  const fullNJTax = calcNJTax(totalNJInc, annuity);
+  const regNJTax  = calcNJTax(regNJInc,   annuity);
+
+  const njCliff = regNJInc < NJ_RIE_CLIFF && totalNJInc >= NJ_RIE_CLIFF;
+  // RIE info for display
+  const rieFracFull = njRIEFraction(totalNJInc);
+  const rieFracReg  = njRIEFraction(regNJInc);
+  const rieApplied    = Math.min(annuity, NJ_RIE_MAX) * rieFracFull;
+  const rieAppliedReg = Math.min(annuity, NJ_RIE_MAX) * rieFracReg;
+  const riePct        = Math.round(rieFracFull * 100);
+
+  // Safe Harbor — lesser of: 110% prior year OR 90% current year (federal)
+  const fedSH_priorYr  = priorFed * 1.10;
+  const fedSH_currYr   = fullFedTax * 0.90;
+  const fedSHTot       = Math.min(fedSH_priorYr, fedSH_currYr);
+  const fedSHMethod    = fedSH_currYr < fedSH_priorYr ? "90% of 2026 tax" : "110% of 2025 tax";
+  // NJ: lesser of 100% prior year OR 80% current year
+  const njSH_priorYr   = priorNJ * 1.00;
+  const njSH_currYr    = fullNJTax * 0.80;
+  const njSHTot        = Math.min(njSH_priorYr, njSH_currYr);
+  const njSHMethod     = njSH_currYr < njSH_priorYr ? "80% of 2026 NJ tax" : "100% of 2025 NJ tax";
+  const fedSHQ   = Math.max(0, fedSHTot - withholding) / 4;
+  const njSHQ    = njSHTot / 4;
+  // Safe harbor balance rolled into Q4
+  const shBalFed  = Math.max(0, fullFedTax - withholding - fedSHTot);
+  const shBalNJ   = Math.max(0, fullNJTax  - njSHTot);
+  const fedSHPayments = [fedSHQ, fedSHQ, fedSHQ, fedSHQ + shBalFed];
+  const njSHPayments  = [njSHQ,  njSHQ,  njSHQ,  njSHQ  + shBalNJ];
+
+  // Annualized Minimum (Schedule AI: 22.5% = 90% x 25%)
+  const annCumFed = PERIODS.map((p, i) => {
+    const hasConv    = convQ <= i + 1;
+    const frac       = p.months / 12;
+    const ytdOrd     = regOrdFed * frac + (hasConv ? conversion : 0);
+    const ytdCG      = capGains  * frac;
+    const annOrd     = ytdOrd * p.factor;
+    const annCG      = ytdCG  * p.factor;
+    const annMAGI    = annOrd + annCG;
+    const annTax     = calcFedTax(annOrd, annCG, annMAGI, numSeniors);
+    // Cap at full year tax to prevent early-quarter annualization from exceeding actual liability
+    return Math.min(
+      Math.max(0, annTax * 0.225 - withholding * p.wFrac),
+      Math.max(0, fullFedTax - withholding)
+    );
+  });
+  const annCumNJ = PERIODS.map((p, i) => {
+    const hasConv   = convQ <= i + 1;
+    const frac      = p.months / 12;
+    const ytdNJ     = regNJInc * frac + (hasConv ? conversion : 0);
+    const ytdAnn    = annuity  * frac; // annuity portion for RIE
+    const annNJInc  = ytdNJ   * p.factor;
+    const annAnnuity= ytdAnn  * p.factor;
+    const annTax    = calcNJTax(annNJInc, annAnnuity);
+    return Math.min(annTax * 0.225, fullNJTax);
+  });
+  const annPayFed = annCumFed.map((c, i) => Math.max(0, c - (i > 0 ? annCumFed[i-1] : 0)));
+  const annPayNJ  = annCumNJ.map((c, i)  => Math.max(0, c - (i > 0 ? annCumNJ[i-1]  : 0)));
+  const annTotFed = annPayFed.reduce((s, v) => s + v, 0);
+  const annTotNJ  = annPayNJ.reduce((s, v)  => s + v, 0);
+  const annBalFed = Math.max(0, fullFedTax - withholding - annTotFed);
+  const annBalNJ  = Math.max(0, fullNJTax  - annTotNJ);
+  const annPayFedAdj = annPayFed.map((v, i) => i === 3 ? v + annBalFed : v);
+  const annPayNJAdj  = annPayNJ.map((v, i)  => i === 3 ? v + annBalNJ  : v);
+
+  // Full Coverage
+  const convDeltaFed = fullFedTax - regFedTax;
+  const convDeltaNJ  = fullNJTax  - regNJTax;
+  const fcCumFed = PERIODS.map((p, i) => {
+    const hasConv = convQ <= i + 1;
+    return regFedTax * (p.months / 12) + (hasConv ? convDeltaFed : 0);
+  });
+  const fcCumNJ = PERIODS.map((p, i) => {
+    const hasConv = convQ <= i + 1;
+    return regNJTax * (p.months / 12) + (hasConv ? convDeltaNJ : 0);
+  });
+  const fcPayFed = fcCumFed.map((c, i) => {
+    const wPrev = withholding * (i > 0 ? PERIODS[i-1].wFrac : 0);
+    const wCurr = withholding * PERIODS[i].wFrac;
+    return Math.max(0, c - (i > 0 ? fcCumFed[i-1] : 0) - (wCurr - wPrev));
+  });
+  const fcPayNJ  = fcCumNJ.map((c, i) => Math.max(0, c - (i > 0 ? fcCumNJ[i-1] : 0)));
+  const fcTotFed = fcPayFed.reduce((s, v) => s + v, 0);
+  const fcTotNJ  = fcPayNJ.reduce((s, v)  => s + v, 0);
+  const fcBalFed = Math.max(0, fullFedTax - withholding - fcTotFed);
+  const fcBalNJ  = Math.max(0, fullNJTax  - fcTotNJ);
+  const fcPayFedAdj = fcPayFed.map((v, i) => i === 3 ? v + fcBalFed : v);
+  const fcPayNJAdj  = fcPayNJ.map((v, i)  => i === 3 ? v + fcBalNJ  : v);
+
+  return {
+    totalFedAGI: totalMAGI, totalNJInc, fullFedTax, fullNJTax, njCliff,
+    rieApplied, rieAppliedReg, riePct, obbbaFull, obbbaReg,
+    fedSHQ, njSHQ, fedSHTot, njSHTot,
+    fedSHMethod, njSHMethod, fedSHPayments, njSHPayments,
+    fedSH_priorYr, fedSH_currYr, njSH_priorYr, njSH_currYr,
+    shBalFed, shBalNJ,
+    annPayFed: annPayFedAdj, annPayNJ: annPayNJAdj,
+    annTotFed: annPayFedAdj.reduce((s,v)=>s+v,0),
+    annTotNJ:  annPayNJAdj.reduce((s,v)=>s+v,0),
+    annBalFed: 0, annBalNJ: 0,
+    fcPayFed: fcPayFedAdj, fcPayNJ: fcPayNJAdj,
+    fcTotFed: fcPayFedAdj.reduce((s,v)=>s+v,0),
+    fcTotNJ:  fcPayNJAdj.reduce((s,v)=>s+v,0),
+    fcBalFed: 0, fcBalNJ: 0,
+  };
+}
+
+const C = {
+  bg: "#f5efe6", panel: "#faf7f2", dark: "#2d1f0e",
+  mid: "#6b4f2e", light: "#c4a882", border: "#e8dfd0",
+  gold: "#f0c070", green: "#3d6020", red: "#a02010", orange: "#c07830",
+  sh: "#8B6914", ann: "#3d6020", fc: "#1a4a7a",
+};
+
+function NumInput({ label, value, setter, note }) {
+  return (
+    <div style={{ marginBottom: 11 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.mid, letterSpacing: "0.05em", textTransform: "uppercase" }}>{label}</div>
+        {note && <div style={{ fontSize: 10, color: C.light }}>{note}</div>}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", background: "white", border: `1px solid ${C.border}`, borderRadius: 6 }}>
+        <span style={{ padding: "7px 8px 7px 10px", color: C.light, fontSize: 13, fontWeight: 700 }}>$</span>
+        <input type="number" value={value} onChange={e => setter(Number(e.target.value) || 0)}
+          style={{ flex: 1, padding: "7px 8px 7px 0", border: "none", background: "transparent", outline: "none", fontSize: 14, color: C.dark, fontFamily: "'Georgia',serif" }} />
+      </div>
+    </div>
+  );
+}
+
+function QTable({ title, shPayments, shQ, payments1, payments3, tot1, tot2, tot3, convQ, safeHarborLabel }) {
+  const cols = ["Safe Harbor", "Annualized Min", "Full Coverage"];
+  const colColors = [C.sh, C.ann, C.fc];
+  const colSubs = [safeHarborLabel, "low Q1–Q3 · big catch-up", "pays full year tax"];
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: C.mid, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 8 }}>{title}</div>
+      <div style={{ background: "white", borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: "10px 14px", background: "#f0e8d8", fontSize: 11, color: C.mid, fontWeight: 700, textTransform: "uppercase" }}>Period</th>
+              <th style={{ textAlign: "center", padding: "10px 14px", background: "#f0e8d8", fontSize: 11, color: C.mid, fontWeight: 700 }}>Due</th>
+              {cols.map((c, ci) => (
+                <th key={ci} style={{ textAlign: "right", padding: "10px 14px", background: colColors[ci], color: "white", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                  {c}<br /><span style={{ fontWeight: 400, fontSize: 10, opacity: 0.85 }}>{colSubs[ci]}</span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {PERIODS.map((p, i) => {
+              const isConv = convQ === i + 1;
+              const isQ4   = i === 3;
+              return (
+                <tr key={i} style={{ borderBottom: `1px solid ${C.border}`, background: isConv ? "#fffaf0" : "white" }}>
+                  <td style={{ padding: "11px 14px" }}>
+                    <span style={{ display: "inline-block", width: 28, height: 28, lineHeight: "28px", textAlign: "center", borderRadius: 5,
+                      background: isConv ? C.dark : "#f0e8d8", color: isConv ? C.gold : C.mid, fontWeight: 700, fontSize: 11, marginRight: 8 }}>{p.label}</span>
+                    <span style={{ fontSize: 12, color: C.mid }}>{p.range}</span>
+                    {isConv && <span style={{ fontSize: 10, color: C.orange, fontWeight: 700, marginLeft: 6 }}>↑ CONVERSION</span>}
+                    {isQ4 && !isConv && <span style={{ fontSize: 10, color: C.mid, marginLeft: 6 }}>incl. balance</span>}
+                    {isQ4 && isConv && <span style={{ fontSize: 10, color: C.orange, fontWeight: 700, marginLeft: 6 }}> · incl. balance</span>}
+                  </td>
+                  <td style={{ textAlign: "center", padding: "11px 14px", fontSize: 11, color: C.mid }}>{p.due}</td>
+                  {[shPayments[i], payments1[i], payments3[i]].map((v, ci) => (
+                    <td key={ci} style={{ textAlign: "right", padding: "11px 14px", fontWeight: (isConv || isQ4) ? 700 : 400,
+                      color: ci === 0 ? C.sh : (v > shQ ? C.red : C.green), fontFamily: "monospace", fontSize: 13 }}>{fmt(v)}</td>
+                  ))}
+                </tr>
+              );
+            })}
+            <tr style={{ background: "#f0e8d8", borderTop: `2px solid ${C.border}` }}>
+              <td colSpan={2} style={{ padding: "10px 14px", fontWeight: 700, fontSize: 12, color: C.dark }}>TOTAL</td>
+              {[tot1, tot2, tot3].map((v, ci) => (
+                <td key={ci} style={{ textAlign: "right", padding: "10px 14px", fontWeight: 700, fontFamily: "monospace", fontSize: 13, color: colColors[ci] }}>{fmt(v)}</td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [annuity,     setAnnuity]     = useState(31000);
+  const [dividends,   setDividends]   = useState(20000);
+  const [ss,          setSS]          = useState(0);
+  const [capGains,    setCapGains]    = useState(10000);
+  const [conversion,  setConversion]  = useState(100000);
+  const [convQ,       setConvQ]       = useState(4);
+  const [priorFed,    setPriorFed]    = useState(40000);
+  const [priorNJ,     setPriorNJ]     = useState(8000);
+  const [withholding, setWithholding] = useState(0);
+  const [numSeniors,  setNumSeniors]  = useState(2);
+
+  const r = useMemo(() => calcAllMethods({ annuity, dividends, ss, capGains, conversion, convQ, priorFed, priorNJ, withholding, numSeniors }),
+    [annuity, dividends, ss, capGains, conversion, convQ, priorFed, priorNJ, withholding, numSeniors]);
+
+  return (
+    <div style={{ fontFamily: "'Georgia',serif", minHeight: "100vh", background: C.bg, color: C.dark }}>
+      <div style={{ background: C.dark, padding: "18px 28px" }}>
+        <div style={{ fontSize: 20, fontWeight: 700, color: C.bg }}>2026 Estimated Tax Planner</div>
+        <div style={{ fontSize: 12, color: C.light, marginTop: 2 }}>Roth Conversion · Quarterly Payments · Federal & New Jersey</div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "290px 1fr", minHeight: "calc(100vh - 62px)" }}>
+
+        {/* INPUTS */}
+        <div style={{ background: C.panel, borderRight: `1px solid ${C.border}`, padding: "18px 16px", overflowY: "auto" }}>
+
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.light, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>2026 Income</div>
+          <NumInput label="Annuity"              value={annuity}    setter={setAnnuity} />
+          <NumInput label="Dividends & Interest" value={dividends}  setter={setDividends} />
+          <NumInput label="Social Security"      value={ss}         setter={setSS}       note="85% fed / 0% NJ" />
+          <NumInput label="Capital Gains"        value={capGains}   setter={setCapGains} />
+
+          <div style={{ borderTop: `1px solid ${C.border}`, margin: "14px 0" }} />
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.light, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>Roth Conversion</div>
+          <NumInput label="Conversion Amount" value={conversion} setter={setConversion} />
+
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.mid, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 7 }}>Conversion Quarter</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 14 }}>
+            {PERIODS.map((p, i) => (
+              <button key={i} onClick={() => setConvQ(i + 1)} style={{
+                padding: "9px 6px", borderRadius: 7,
+                border: convQ === i+1 ? `2px solid ${C.gold}` : `1px solid ${C.border}`,
+                background: convQ === i+1 ? C.dark : "white",
+                color: convQ === i+1 ? C.gold : C.mid,
+                cursor: "pointer", fontFamily: "'Georgia',serif", fontWeight: 700, fontSize: 13,
+              }}>
+                <div>{p.label}</div>
+                <div style={{ fontSize: 10, fontWeight: 400, marginTop: 2, opacity: 0.75 }}>{p.range}</div>
+              </button>
+            ))}
+          </div>
+
+          <div style={{ borderTop: `1px solid ${C.border}`, margin: "14px 0" }} />
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.light, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>OBBBA Senior Deduction (2025–2028)</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.mid, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 7 }}>Qualifying seniors age 65+</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 10 }}>
+            {[1, 2].map(n => (
+              <button key={n} onClick={() => setNumSeniors(n)} style={{
+                padding: "8px 6px", borderRadius: 7,
+                border: numSeniors === n ? `2px solid ${C.gold}` : `1px solid ${C.border}`,
+                background: numSeniors === n ? C.dark : "white",
+                color: numSeniors === n ? C.gold : C.mid,
+                cursor: "pointer", fontFamily: "'Georgia',serif", fontWeight: 700, fontSize: 13,
+              }}>{n === 1 ? "1 Senior" : "2 Seniors"}</button>
+            ))}
+          </div>
+          <div style={{ background: "#f0f8e8", border: "1px solid #a0c870", borderRadius: 7, padding: "9px 12px", fontSize: 11, color: "#3d6020", marginBottom: 4 }}>
+            <div style={{ fontWeight: 700, marginBottom: 3 }}>OBBBA deduction: {fmt(r.obbbaFull)}</div>
+            <div style={{ opacity: 0.85 }}>Std deduction: $34,700 · OBBBA: {fmt(r.obbbaFull)} · Total: {fmt(34700 + r.obbbaFull)}</div>
+            {r.obbbaFull < numSeniors * 6000 && <div style={{ marginTop: 3, color: "#8B6914", fontWeight: 600 }}>⚠ Partially phased out (MAGI {fmt(r.totalFedAGI)} &gt; $150K)</div>}
+            {r.obbbaFull === 0 && <div style={{ marginTop: 3, color: C.red, fontWeight: 600 }}>✗ Fully phased out (MAGI &gt; $250K)</div>}
+          </div>
+          <NumInput label="2025 Federal Tax"     value={priorFed}    setter={setPriorFed} />
+          <NumInput label="2025 NJ Tax"          value={priorNJ}     setter={setPriorNJ} />
+          <NumInput label="2026 Fed Withholding" value={withholding} setter={setWithholding} note="from annuity etc." />
+
+          <div style={{ borderTop: `1px solid ${C.border}`, margin: "14px 0" }} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+            {[["Fed AGI", r.totalFedAGI], ["NJ Income", r.totalNJInc], ["Full Fed Tax", r.fullFedTax], ["Full NJ Tax", r.fullNJTax]].map(([lbl, val]) => (
+              <div key={lbl} style={{ background: C.dark, borderRadius: 7, padding: "9px 11px" }}>
+                <div style={{ fontSize: 10, color: C.light, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>{lbl}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: C.gold, marginTop: 3 }}>{fmt(val)}</div>
+              </div>
+            ))}
+          </div>
+
+          {r.njCliff && (
+            <div style={{ marginTop: 12, background: "#fff3cd", border: "1px solid #f0c060", borderRadius: 7, padding: "10px 12px", fontSize: 11, color: "#7a5c00", lineHeight: 1.6 }}>
+              ⚠ <strong>NJ RIE lost:</strong> Conversion pushes NJ income over $150K — full exclusion eliminated. Consider sizing conversion to stay below $150K (full), $125K (25% excl.), or $100K (50% excl.).
+            </div>
+          )}
+          {!r.njCliff && r.rieApplied > 0 && (
+            <div style={{ marginTop: 12, background: "#f0f8e8", border: "1px solid #a0c870", borderRadius: 7, padding: "10px 12px", fontSize: 11, color: "#3d6020", lineHeight: 1.6 }}>
+              ✓ <strong>NJ RIE ({r.riePct}% tier):</strong> {fmt(r.rieApplied)} excluded from NJ tax.
+              {r.totalNJInc > 100000 && r.totalNJInc < 150000 ? ` Income in phase-out zone ($100K–$150K).` : ""}
+            </div>
+          )}
+          {!r.njCliff && r.rieApplied === 0 && r.annuity > 0 && (
+            <div style={{ marginTop: 12, background: "#fff3cd", border: "1px solid #f0c060", borderRadius: 7, padding: "10px 12px", fontSize: 11, color: "#7a5c00", lineHeight: 1.6 }}>
+              ⚠ <strong>NJ RIE = $0:</strong> NJ income over $150K — no exclusion applies.
+            </div>
+          )}
+          <div style={{ marginTop: 8, background: "#f0e8d8", borderRadius: 7, padding: "9px 12px", fontSize: 11, color: "#6b4f2e", lineHeight: 1.6 }}>
+            📊 Cap gains taxed at federal LTCG rates (0/15/20%). NJ taxes cap gains as ordinary income.
+          </div>
+        </div>
+
+        {/* RESULTS */}
+        <div style={{ padding: "22px 26px", overflowY: "auto" }}>
+
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>
+            Quarterly Payments — Conversion in {PERIODS[convQ-1].label} ({PERIODS[convQ-1].range})
+          </div>
+          <div style={{ fontSize: 12, color: C.mid, marginBottom: 20, lineHeight: 1.75 }}>
+            In quarters <strong>without</strong> the conversion, Annualized and Full Coverage payments are much lower than Safe Harbor.
+            The conversion quarter catches up. Green = less than safe harbor · Red = more than safe harbor.
+          </div>
+
+          <div style={{ background: "white", border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 18px", marginBottom: 20, fontSize: 12 }}>
+            <div style={{ fontWeight: 700, color: C.dark, marginBottom: 8, fontSize: 13 }}>Safe Harbor — which test applies?</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}>
+              {[
+                ["Federal: 110% of 2025 tax", fmt(r.fedSH_priorYr), "prior year"],
+                ["Federal: 90% of 2026 tax",  fmt(r.fedSH_currYr),  "current year"],
+                ["NJ: 100% of 2025 tax",      fmt(r.njSH_priorYr),  "prior year"],
+                ["NJ: 80% of 2026 NJ tax",    fmt(r.njSH_currYr),   "current year"],
+              ].map(([lbl, val, tag]) => {
+                const isFedPrior = lbl.includes("110%");
+                const isFedCurr  = lbl.includes("90%");
+                const isNJPrior  = lbl.includes("100%");
+                const isNJCurr   = lbl.includes("80%");
+                const isWinner =
+                  (isFedPrior && r.fedSH_priorYr <= r.fedSH_currYr) ||
+                  (isFedCurr  && r.fedSH_currYr  <  r.fedSH_priorYr) ||
+                  (isNJPrior  && r.njSH_priorYr  <= r.njSH_currYr) ||
+                  (isNJCurr   && r.njSH_currYr   <  r.njSH_priorYr);
+                return (
+                  <div key={lbl} style={{ padding: "9px 12px", borderRadius: 7, border: `1px solid ${isWinner ? C.green : C.border}`,
+                    background: isWinner ? "#f0f8e8" : "#faf7f2" }}>
+                    <div style={{ fontSize: 11, color: isWinner ? C.green : C.mid, fontWeight: 700 }}>{lbl} {isWinner ? "✓ USE THIS" : ""}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: isWinner ? C.green : C.dark, marginTop: 3 }}>{val}</div>
+                    <div style={{ fontSize: 10, color: C.light }}>{tag}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 11, color: C.mid }}>You use whichever is <strong>lower</strong>. Currently using: <strong style={{ color: C.sh }}>Federal: {r.fedSHMethod} · NJ: {r.njSHMethod}</strong></div>
+          </div>
+
+          <QTable
+            title="Federal"
+            safeHarborLabel={`even · ${r.fedSHMethod} (lesser)`}
+            shPayments={r.fedSHPayments} shQ={r.fedSHQ} convQ={convQ}
+            payments1={r.annPayFed} payments3={r.fcPayFed}
+            tot1={r.fedSHPayments.reduce((s,v)=>s+v,0)} tot2={r.annTotFed} tot3={r.fcTotFed}
+          />
+
+          <QTable
+            title="New Jersey"
+            safeHarborLabel={`even · ${r.njSHMethod} (lesser)`}
+            shPayments={r.njSHPayments} shQ={r.njSHQ} convQ={convQ}
+            payments1={r.annPayNJ} payments3={r.fcPayNJ}
+            tot1={r.njSHPayments.reduce((s,v)=>s+v,0)} tot2={r.annTotNJ} tot3={r.fcTotNJ}
+          />
+
+          <div style={{ background: "white", border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 18px", fontSize: 12, color: C.mid, lineHeight: 1.8 }}>
+            <div style={{ fontWeight: 700, color: C.dark, marginBottom: 5, fontSize: 13 }}>How to read this</div>
+            <div><span style={{ color: C.sh, fontWeight: 700 }}>Safe Harbor</span> — 4 equal payments totaling 110% of your 2025 tax. No penalty risk. May over- or under-pay vs. actual.</div>
+            <div><span style={{ color: C.ann, fontWeight: 700 }}>Annualized Min</span> — minimum payments under IRS Schedule AI to avoid underpayment penalty. Low in non-conversion quarters. Q4 (Jan 15) includes the full remaining balance — nothing left at filing.</div>
+            <div><span style={{ color: C.fc, fontWeight: 700 }}>Full Coverage</span> — same timing but sized to pay your entire year's tax. Q4 covers everything — nothing due at filing.</div>
+            <div style={{ marginTop: 8, fontSize: 11, color: C.light }}>
+              Federal safe harbor = lesser of 110% of 2025 tax OR 90% of 2026 tax. NJ = lesser of 100% of 2025 tax OR 80% of 2026 NJ tax. Annualized = IRS Schedule AI / NJ-2210 principles (22.5% factor). These are estimates — consult your CPA before making payments.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
