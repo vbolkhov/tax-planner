@@ -10,7 +10,7 @@ const FED_BRACKETS = [
   { min: 501050,   max: 751600,  rate: 0.35 },
   { min: 751600,   max: Infinity,rate: 0.37 },
 ];
-const FED_STD_MFJ      = 34700;  // $30,000 base + $1,600×2 existing senior add-on (both 65+)
+const FED_STD_MFJ      = 35500;  // 2027 estimated
 const OBBBA_PER_PERSON = 6000;   // 2025-2028, up to $6,000 per qualifying senior
 const OBBBA_PHASEOUT_START_MFJ = 150000;
 const OBBBA_PHASEOUT_RATE      = 0.06;  // 6 cents per dollar over threshold
@@ -100,44 +100,7 @@ const fmt = n => {
   return n < 0 ? `($${str})` : `$${str}`;
 };
 
-// IRS 2026 estimated tax due dates and filing deadline
-const DUE_DATES = [
-  new Date(2026, 3, 15),  // Apr 15, 2026 — Q1
-  new Date(2026, 5, 16),  // Jun 16, 2026 — Q2
-  new Date(2026, 8, 15),  // Sep 15, 2026 — Q3
-  new Date(2027, 0, 15),  // Jan 15, 2027 — Q4
-];
-const FILING_DATE = new Date(2027, 3, 15); // Apr 15, 2027
-
-// Underpayment penalty estimator (IRS Form 2210 equal-installment method)
-// Penalty accrues from each due date until the cumulative shortfall is resolved
-function calcUnderpaymentPenalty(fedPaid, withholding, fedSHTot, rate = 0.07) {
-  // Cumulative required at end of each quarter (withholding credited ratably)
-  const cumReq  = PERIODS.map((p, i) => (i + 1) / 4 * fedSHTot);
-  const cumPaid = PERIODS.map((p, i) =>
-    fedPaid.slice(0, i + 1).reduce((s, v) => s + v, 0) + withholding * p.wFrac
-  );
-
-  let totalPenalty = 0;
-  const details = PERIODS.map((_, i) => {
-    const shortfall = Math.max(0, cumReq[i] - cumPaid[i]);
-    if (shortfall <= 0) return { shortfall: 0, days: 0, penalty: 0 };
-
-    // Find when this cumulative shortfall is first resolved by a future payment
-    let resolvedDate = FILING_DATE;
-    for (let j = i + 1; j < 4; j++) {
-      if (cumPaid[j] >= cumReq[i]) { resolvedDate = DUE_DATES[j]; break; }
-    }
-    const days    = Math.round((resolvedDate.getTime() - DUE_DATES[i].getTime()) / 86400000);
-    const penalty = shortfall * rate * days / 365;
-    totalPenalty += penalty;
-    return { shortfall, days, penalty };
-  });
-
-  return { totalPenalty, details };
-}
-
-function calcAllMethods({ annuity, niitAnnuity, divByQ, ss, ltcgByQ, stByQ, conversions, priorFed, priorNJ, withholding, numSeniors, fedPaid, njPaid, penaltyRate }) {
+function calcAllMethods({ annuity, niitAnnuity, divByQ, ss, ltcgByQ, stByQ, conversions, priorFed, priorNJ, withholding, numSeniors, fedPaid, njPaid }) {
   const ssTaxable     = ss * 0.85;
   const totalDiv      = divByQ.reduce((s, v) => s + v, 0);
   const totalLTCG     = ltcgByQ.reduce((s, v) => s + v, 0);
@@ -273,16 +236,15 @@ function calcAllMethods({ annuity, niitAnnuity, divByQ, ss, ltcgByQ, stByQ, conv
   const fedBalanceDue = fullFedTax - withholding - fedPaidTotal;
   const njBalanceDue  = fullNJTax  - njPaidTotal;
 
-  // Underpayment penalty — based on actual fedPaid vs. required safe harbor installments
-  const penalty = (fedPaidTotal > 0)
-    ? calcUnderpaymentPenalty(fedPaid, withholding, fedSHTot, penaltyRate ?? 0.07)
-    : null;
-
-  // Safe Harbor 110% of prior year — fixed flat payments, never changes with current income
+  // Safe Harbor 110% of prior year — flat Q1–Q3, Q4 true-up to actual full-year tax
+  // Q1–Q3: fixed $9,466 regardless of 2026 income
+  // Q4: whatever remains of actual full-year tax after Q1–Q3 flat payments
   const fedSH110Q        = Math.max(0, priorFed * 1.10 - withholding) / 4;
-  const njSH110Q         = priorNJ * 1.00 / 4;  // NJ: 100% of prior year
-  const fedSH110Payments = [fedSH110Q, fedSH110Q, fedSH110Q, fedSH110Q];
-  const njSH110Payments  = [njSH110Q,  njSH110Q,  njSH110Q,  njSH110Q];
+  const njSH110Q         = priorNJ * 1.00 / 4;
+  const fedSH110Q4       = Math.max(0, fullFedTax - withholding - fedSH110Q * 3);
+  const njSH110Q4        = Math.max(0, fullNJTax  - njSH110Q * 3);
+  const fedSH110Payments = [fedSH110Q, fedSH110Q, fedSH110Q, fedSH110Q4];
+  const njSH110Payments  = [njSH110Q,  njSH110Q,  njSH110Q,  njSH110Q4];
 
   return {
     totalFedAGI: totalMAGI, totalNJInc, fullFedTax, fullNJTax, njCliff,
@@ -298,7 +260,7 @@ function calcAllMethods({ annuity, niitAnnuity, divByQ, ss, ltcgByQ, stByQ, conv
     fcPayFed: fcPayFedAdj, fcPayNJ: fcPayNJAdj,
     fcTotFed: fcPayFedAdj.reduce((s,v)=>s+v,0),
     fcTotNJ:  fcPayNJAdj.reduce((s,v)=>s+v,0),
-    fedPaidTotal, njPaidTotal, fedBalanceDue, njBalanceDue, penalty,
+    fedPaidTotal, njPaidTotal, fedBalanceDue, njBalanceDue,
   };
 }
 
@@ -309,7 +271,7 @@ const C = {
   sh: "#8B6914", sh110: "#5a7a3a", ann: "#3d6020", fc: "#1a4a7a",
 };
 
-function NumInput({ label, value, setter, note, allowNegative = false }) {
+function NumInput({ label, value, setter, note = "", allowNegative = false }) {
   const [localVal, setLocalVal] = useState(String(value));
   const [focused,  setFocused]  = useState(false);
 
@@ -366,7 +328,7 @@ function NumInput({ label, value, setter, note, allowNegative = false }) {
 function QTable({ title, sh110Payments, payments1, payments3, tot1, tot2, tot3, convQs, paid, withh, shLabel }) {
   const cols      = [shLabel || "SH 110% Prior Year", "Annualized Min", "Full Coverage"];
   const colColors = [C.sh110, C.ann, C.fc];
-  const colSubs   = ["flat · penalty-safe · fixed", "schedule AI · low Q1–Q3", "pays full year tax"];
+  const colSubs   = ["flat Q1–Q3 · true-up Q4", "schedule AI · low Q1–Q3", "pays full year tax"];
   const totals    = [tot1, tot2, tot3];
   const wh        = withh || 0;
   const totalPaid = paid.reduce((s, v) => s + v, 0);
@@ -450,7 +412,7 @@ export default function App() {
   const [niitAnnuity, setNiitAnnuity] = useState(18324);  // $1,527/mo × 12, code D box 7
   const [divByQ,      setDivByQ]      = useState([3772, 1544, 4276, 4437]);
   const [ss,          setSS]          = useState(0);
-  const [ltcgByQ,     setLtcgByQ]     = useState([13000, 0, 0, 0]);
+  const [ltcgByQ,     setLtcgByQ]     = useState([13174, 0, 0, 0]);
   const [stByQ,       setStByQ]       = useState([-243.26, 0, 0, 0]);
   const [conversions, setConversions] = useState([100000, 0, 0, 0]);
   const [priorFed,    setPriorFed]    = useState(34421);
@@ -459,7 +421,6 @@ export default function App() {
   const [numSeniors,  setNumSeniors]  = useState(2);
   const [fedPaid,     setFedPaid]     = useState([0, 0, 0, 0]);
   const [njPaid,      setNJPaid]      = useState([0, 0, 0, 0]);
-  const [penaltyRate, setPenaltyRate] = useState(7.0); // percent, e.g. 7.0 = 7%
 
   const setConvQ    = (i, val) => setConversions(prev => prev.map((v, j) => j === i ? val : v));
   const setDivQ     = (i, val) => setDivByQ(prev => prev.map((v, j) => j === i ? val : v));
@@ -474,13 +435,13 @@ export default function App() {
   const totalLTCGDisplay = ltcgByQ.reduce((s, v) => s + v, 0);
   const totalSTDisplay   = stByQ.reduce((s, v) => s + v, 0);
 
-  const r = useMemo(() => calcAllMethods({ annuity, niitAnnuity, divByQ, ss, ltcgByQ, stByQ, conversions, priorFed, priorNJ, withholding, numSeniors, fedPaid, njPaid, penaltyRate: penaltyRate / 100 }),
-    [annuity, niitAnnuity, divByQ, ss, ltcgByQ, stByQ, conversions, priorFed, priorNJ, withholding, numSeniors, fedPaid, njPaid, penaltyRate]);
+  const r = useMemo(() => calcAllMethods({ annuity, niitAnnuity, divByQ, ss, ltcgByQ, stByQ, conversions, priorFed, priorNJ, withholding, numSeniors, fedPaid, njPaid }),
+    [annuity, niitAnnuity, divByQ, ss, ltcgByQ, stByQ, conversions, priorFed, priorNJ, withholding, numSeniors, fedPaid, njPaid]);
 
   return (
     <div style={{ fontFamily: "'Georgia',serif", minHeight: "100vh", background: C.bg, color: C.dark }}>
       <div style={{ background: C.dark, padding: "18px 28px" }}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: C.bg }}>2026 Estimated Tax Planner</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: C.bg }}>2027 Estimated Tax Planner</div>
         <div style={{ fontSize: 12, color: C.light, marginTop: 2 }}>Roth Conversion · Quarterly Payments · Federal & New Jersey</div>
       </div>
 
@@ -547,7 +508,7 @@ export default function App() {
           </div>
           <div style={{ background: "#f0f8e8", border: "1px solid #a0c870", borderRadius: 7, padding: "9px 12px", fontSize: 11, color: "#3d6020", marginBottom: 4 }}>
             <div style={{ fontWeight: 700, marginBottom: 3 }}>OBBBA deduction: {fmt(r.obbbaFull)}</div>
-            <div style={{ opacity: 0.85 }}>Std deduction: $34,700 · OBBBA: {fmt(r.obbbaFull)} · Total: {fmt(34700 + r.obbbaFull)}</div>
+            <div style={{ opacity: 0.85 }}>Std deduction: $35,500 · OBBBA: {fmt(r.obbbaFull)} · Total: {fmt(35500 + r.obbbaFull)}</div>
             {r.obbbaFull < numSeniors * 6000 && <div style={{ marginTop: 3, color: "#8B6914", fontWeight: 600 }}>⚠ Partially phased out (MAGI {fmt(r.totalFedAGI)} &gt; $150K)</div>}
             {r.obbbaFull === 0 && <div style={{ marginTop: 3, color: C.red, fontWeight: 600 }}>✗ Fully phased out (MAGI &gt; $250K)</div>}
           </div>
@@ -570,20 +531,6 @@ export default function App() {
           ))}
 
           <div style={{ borderTop: `1px solid ${C.border}`, margin: "14px 0" }} />
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.light, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 4 }}>Penalty Rate</div>
-          <div style={{ fontSize: 10, color: C.light, marginBottom: 8 }}>IRS underpayment rate = Fed short-term + 3% (currently ~7%)</div>
-          <div style={{ display: "flex", alignItems: "center", background: "white", border: `1px solid ${C.border}`, borderRadius: 6, marginBottom: 10 }}>
-            <input
-              type="number" min="1" max="15" step="0.25"
-              value={penaltyRate}
-              onChange={e => setPenaltyRate(parseFloat(e.target.value) || 7)}
-              style={{ flex: 1, padding: "7px 8px 7px 10px", border: "none", background: "transparent", outline: "none",
-                fontSize: 14, color: C.dark, fontFamily: "'Georgia',serif" }}
-            />
-            <span style={{ padding: "7px 10px 7px 4px", color: C.light, fontSize: 13, fontWeight: 700 }}>%</span>
-          </div>
-
-          <div style={{ borderTop: `1px solid ${C.border}`, margin: "14px 0" }} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
             {[["Fed AGI", r.totalFedAGI], ["NJ Income", r.totalNJInc], ["Full Fed Tax", r.fullFedTax], ["Full NJ Tax", r.fullNJTax]].map(([lbl, val]) => (
               <div key={lbl} style={{ background: C.dark, borderRadius: 7, padding: "9px 11px" }}>
@@ -604,7 +551,7 @@ export default function App() {
               {r.totalNJInc > 100000 && r.totalNJInc < 150000 ? ` Income in phase-out zone ($100K–$150K).` : ""}
             </div>
           )}
-          {!r.njCliff && r.rieApplied === 0 && r.annuity > 0 && (
+          {!r.njCliff && r.rieApplied === 0 && annuity > 0 && (
             <div style={{ marginTop: 12, background: "#fff3cd", border: "1px solid #f0c060", borderRadius: 7, padding: "10px 12px", fontSize: 11, color: "#7a5c00", lineHeight: 1.6 }}>
               ⚠ <strong>NJ RIE = $0:</strong> NJ income over $150K — no exclusion applies.
             </div>
@@ -679,65 +626,6 @@ export default function App() {
             Conversion quarters catch up. Green = less than safe harbor · Red = more than safe harbor.
           </div>
 
-          {/* UNDERPAYMENT PENALTY ESTIMATE */}
-          {r.penalty && (
-            <div style={{ background: "white", border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 18px", marginBottom: 20, fontSize: 12 }}>
-              <div style={{ fontWeight: 700, color: C.dark, marginBottom: 4, fontSize: 13 }}>
-                Underpayment Penalty Estimate
-                <span style={{ fontWeight: 400, fontSize: 11, color: C.mid, marginLeft: 8 }}>— based on payments entered above vs. safe harbor</span>
-              </div>
-              <div style={{ fontSize: 11, color: C.mid, marginBottom: 10 }}>
-                Equal-installment method (Form 2210). Does <strong>not</strong> apply the annualized income method — use Form 2210 Schedule AI at filing to eliminate penalties for late-year conversions.
-              </div>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                <thead>
-                  <tr style={{ background: "#f0e8d8" }}>
-                    <th style={{ textAlign: "left",   padding: "8px 10px", color: C.mid, fontWeight: 700, fontSize: 11 }}>Quarter</th>
-                    <th style={{ textAlign: "right",  padding: "8px 10px", color: C.mid, fontWeight: 700, fontSize: 11 }}>Cumulative Shortfall</th>
-                    <th style={{ textAlign: "right",  padding: "8px 10px", color: C.mid, fontWeight: 700, fontSize: 11 }}>Days Unpaid</th>
-                    <th style={{ textAlign: "right",  padding: "8px 10px", color: C.mid, fontWeight: 700, fontSize: 11 }}>Est. Penalty</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {r.penalty.details.map((d, i) => (
-                    <tr key={i} style={{ borderBottom: `1px solid ${C.border}`, background: d.penalty > 0 ? "#fff8f0" : "white" }}>
-                      <td style={{ padding: "8px 10px", fontWeight: 600, color: d.penalty > 0 ? C.orange : C.mid }}>
-                        {PERIODS[i].label} — due {PERIODS[i].due}
-                      </td>
-                      <td style={{ textAlign: "right", padding: "8px 10px", fontFamily: "monospace", color: d.shortfall > 0 ? C.red : C.green }}>
-                        {d.shortfall > 0 ? fmt(d.shortfall) : "✓ none"}
-                      </td>
-                      <td style={{ textAlign: "right", padding: "8px 10px", color: C.mid }}>
-                        {d.days > 0 ? `${d.days} days` : "—"}
-                      </td>
-                      <td style={{ textAlign: "right", padding: "8px 10px", fontFamily: "monospace", fontWeight: 700,
-                        color: d.penalty > 0 ? C.red : C.green }}>
-                        {d.penalty > 0 ? fmt(d.penalty) : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr style={{ background: "#f0e8d8", borderTop: `2px solid ${C.border}` }}>
-                    <td colSpan={3} style={{ padding: "9px 10px", fontWeight: 700, color: C.dark }}>Total estimated IRS penalty</td>
-                    <td style={{ textAlign: "right", padding: "9px 10px", fontFamily: "monospace", fontWeight: 700, fontSize: 14,
-                      color: r.penalty.totalPenalty > 0 ? C.red : C.green }}>
-                      {r.penalty.totalPenalty > 0 ? fmt(r.penalty.totalPenalty) : "✓ $0"}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-              {r.penalty.totalPenalty > 0 && (
-                <div style={{ marginTop: 10, background: "#fff3cd", border: "1px solid #f0c060", borderRadius: 7, padding: "9px 12px", fontSize: 11, color: "#7a5c00", lineHeight: 1.6 }}>
-                  ⚠ <strong>File Form 2210 Schedule AI</strong> with your return to use the annualized income method. If your Q4 conversion income didn't exist earlier in the year, the annualized method eliminates this penalty — no change to your payment amounts needed.
-                </div>
-              )}
-              {r.penalty.totalPenalty === 0 && (
-                <div style={{ marginTop: 10, background: "#f0f8e8", border: "1px solid #a0c870", borderRadius: 7, padding: "9px 12px", fontSize: 11, color: "#3d6020" }}>
-                  ✓ No underpayment penalty under the equal-installment method based on payments entered.
-                </div>
-              )}
-            </div>
-          )}
-
           <div style={{ background: "white", border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 18px", marginBottom: 20, fontSize: 12 }}>
             <div style={{ fontWeight: 700, color: C.dark, marginBottom: 8, fontSize: 13 }}>Safe Harbor — which test applies?</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}>
@@ -777,6 +665,7 @@ export default function App() {
             tot1={r.fedSH110Payments.reduce((s,v)=>s+v,0)}
             tot2={r.annTotFed} tot3={r.fcTotFed}
             paid={fedPaid} withh={withholding}
+            shLabel="SH 110% Prior Year"
           />
 
           <QTable
