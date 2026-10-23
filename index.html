@@ -1,17 +1,755 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>taxes</title>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2026 Estimated Tax Planner</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Georgia', serif; background: #f5efe6; color: #2d1f0e; min-height: 100vh; }
+  .header { background: #2d1f0e; padding: 18px 28px; }
+  .header h1 { font-size: 20px; font-weight: 700; color: #f5efe6; }
+  .header p  { font-size: 12px; color: #c4a882; margin-top: 2px; }
+  .layout { display: grid; grid-template-columns: 290px 1fr; min-height: calc(100vh - 62px); }
+  .sidebar { background: #faf7f2; border-right: 1px solid #e8dfd0; padding: 18px 16px; overflow-y: auto; }
+  .main    { padding: 22px 26px; overflow-y: auto; }
+
+  .section-label { font-size: 11px; font-weight: 700; color: #c4a882; letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 10px; }
+  .sub-label     { font-size: 11px; font-weight: 700; color: #6b4f2e; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 4px; margin-top: 8px; }
+  .hint          { font-size: 10px; color: #c4a882; margin-bottom: 8px; }
+  .divider       { border: none; border-top: 1px solid #e8dfd0; margin: 14px 0; }
+
+  .num-input-wrap { margin-bottom: 11px; }
+  .num-input-wrap label { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .num-input-wrap label span.lbl  { font-size: 11px; font-weight: 700; color: #6b4f2e; letter-spacing: 0.05em; text-transform: uppercase; }
+  .num-input-wrap label span.note { font-size: 10px; color: #c4a882; }
+  .input-row { display: flex; align-items: center; background: white; border: 1px solid #e8dfd0; border-radius: 6px; }
+  .input-row.negative { border-color: #3d6020; }
+  .input-row .prefix { padding: 7px 8px 7px 10px; color: #c4a882; font-size: 13px; font-weight: 700; }
+  .input-row.negative .prefix { color: #3d6020; }
+  .input-row input { flex: 1; padding: 7px 8px 7px 0; border: none; background: transparent; outline: none;
+    font-size: 14px; color: #2d1f0e; font-family: 'Georgia', serif; }
+  .input-row.negative input { color: #3d6020; }
+
+  .senior-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+  .senior-btn { padding: 8px 6px; border-radius: 7px; border: 1px solid #e8dfd0; background: white;
+    color: #6b4f2e; cursor: pointer; font-family: 'Georgia', serif; font-weight: 700; font-size: 13px; }
+  .senior-btn.active { border: 2px solid #f0c070; background: #2d1f0e; color: #f0c070; }
+
+  .info-green  { background: #f0f8e8; border: 1px solid #a0c870; border-radius: 7px; padding: 9px 12px; font-size: 11px; color: #3d6020; margin-bottom: 4px; }
+  .info-yellow { background: #fff3cd; border: 1px solid #f0c060; border-radius: 7px; padding: 10px 12px; font-size: 11px; color: #7a5c00; line-height: 1.6; margin-top: 12px; }
+  .info-tan    { background: #f0e8d8; border-radius: 7px; padding: 9px 12px; font-size: 11px; color: #6b4f2e; line-height: 1.6; }
+
+  .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
+  .summary-tile { background: #2d1f0e; border-radius: 7px; padding: 9px 11px; }
+  .summary-tile .tile-lbl { font-size: 10px; color: #c4a882; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .summary-tile .tile-val { font-size: 15px; font-weight: 700; color: #f0c070; margin-top: 3px; }
+
+  /* Results */
+  .section-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+  .intro-text { font-size: 12px; color: #6b4f2e; margin-bottom: 20px; line-height: 1.75; }
+
+  .card { background: white; border: 1px solid #e8dfd0; border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; font-size: 12px; }
+  .card-title { font-weight: 700; color: #2d1f0e; margin-bottom: 8px; font-size: 13px; }
+
+  .balance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .balance-card { border-radius: 8px; padding: 12px 14px; }
+  .balance-card .bc-title { font-weight: 700; font-size: 13px; color: #2d1f0e; margin-bottom: 8px; }
+  .balance-row { display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 11px; }
+  .balance-row .bc-lbl { color: #6b4f2e; }
+  .balance-row .bc-val { font-weight: 600; color: #2d1f0e; }
+  .balance-row .bc-val.green { color: #3d6020; }
+  .balance-divider { border-top: 1px solid; padding-top: 6px; display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+  .balance-divider .bc-status { font-weight: 700; font-size: 12px; }
+  .balance-divider .bc-amount { font-weight: 700; font-size: 16px; }
+  .balance-note { font-size: 10px; color: #c4a882; margin-top: 10px; }
+
+  .sh-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
+  .sh-card { padding: 9px 12px; border-radius: 7px; border: 1px solid #e8dfd0; background: #faf7f2; }
+  .sh-card.winner { border-color: #3d6020; background: #f0f8e8; }
+  .sh-card .sh-lbl { font-size: 11px; color: #6b4f2e; font-weight: 700; }
+  .sh-card.winner .sh-lbl { color: #3d6020; }
+  .sh-card .sh-val { font-size: 16px; font-weight: 700; color: #2d1f0e; margin-top: 3px; }
+  .sh-card.winner .sh-val { color: #3d6020; }
+  .sh-card .sh-tag { font-size: 10px; color: #c4a882; }
+  .sh-footer { font-size: 11px; color: #6b4f2e; }
+
+  .qtable-title { font-weight: 700; font-size: 13px; color: #6b4f2e; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 8px; }
+  .qtable-wrap  { background: white; border-radius: 10px; border: 1px solid #e8dfd0; overflow: hidden; margin-bottom: 24px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { padding: 10px 14px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  thead th.period-col { text-align: left; background: #f0e8d8; color: #6b4f2e; }
+  thead th.due-col    { text-align: center; background: #f0e8d8; color: #6b4f2e; }
+  tbody tr { border-bottom: 1px solid #e8dfd0; }
+  tbody tr.conv-row { background: #fffaf0; }
+  tbody tr.normal-row { background: white; }
+  tbody td { padding: 11px 14px; }
+  td.period-cell { }
+  td.due-cell    { text-align: center; font-size: 11px; color: #6b4f2e; }
+  td.amount-cell { text-align: right; font-family: monospace; font-size: 13px; }
+  .period-badge { display: inline-block; width: 28px; height: 28px; line-height: 28px; text-align: center;
+    border-radius: 5px; font-weight: 700; font-size: 11px; margin-right: 8px; }
+  .period-badge.conv  { background: #2d1f0e; color: #f0c070; }
+  .period-badge.plain { background: #f0e8d8; color: #6b4f2e; }
+  .period-range { font-size: 12px; color: #6b4f2e; }
+  .conv-tag  { font-size: 10px; color: #c07830; font-weight: 700; margin-left: 6px; }
+  .q4-tag    { font-size: 10px; color: #6b4f2e; margin-left: 6px; }
+  .paid-tag  { font-size: 10px; color: #3d6020; font-weight: 700; margin-top: 2px; }
+  tfoot tr { background: #f0e8d8; border-top: 2px solid #e8dfd0; }
+  tfoot td { padding: 10px 14px; font-weight: 700; font-size: 12px; color: #2d1f0e; }
+  tfoot td.total-amt { text-align: right; font-family: monospace; font-size: 13px; }
+  .paid-row td { background: #f5f0e8; border-top: 1px solid #e8dfd0; font-size: 11px; color: #6b4f2e; }
+  .paid-row .paid-summary { }
+  .paid-row .paid-bal { text-align: right; font-family: monospace; font-size: 12px; font-weight: 700; }
+
+  .legend { background: white; border: 1px solid #e8dfd0; border-radius: 10px; padding: 14px 18px; font-size: 12px; color: #6b4f2e; line-height: 1.8; }
+  .legend-title { font-weight: 700; color: #2d1f0e; margin-bottom: 5px; font-size: 13px; }
+  .legend-note  { margin-top: 8px; font-size: 11px; color: #c4a882; }
+
+  @media (max-width: 800px) {
+    .layout { grid-template-columns: 1fr; }
+    .balance-grid { grid-template-columns: 1fr; }
+    .sh-grid { grid-template-columns: 1fr 1fr; }
+    .summary-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
 </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<body>
+
+<div class="header">
+  <h1>2026 Estimated Tax Planner</h1>
+  <p>Roth Conversion · Quarterly Payments · Federal &amp; New Jersey</p>
+</div>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <div class="section-label">2026 Income</div>
+    <div id="inp-annuity"></div>
+    <div id="inp-niit"></div>
+    <div id="inp-ss"></div>
+
+    <div class="sub-label">Dividends &amp; Interest by Quarter</div>
+    <div class="hint" id="div-hint">Enter actual received each period · Total: <strong>$0.00</strong></div>
+    <div id="inp-div-q1"></div>
+    <div id="inp-div-q2"></div>
+    <div id="inp-div-q3"></div>
+    <div id="inp-div-q4"></div>
+
+    <div class="sub-label">Long-Term Capital Gains by Quarter</div>
+    <div class="hint" id="ltcg-hint">Federal LTCG rates (0/15/20%) · NJ ordinary · Total: <strong>$0.00</strong></div>
+    <div id="inp-ltcg-q1"></div>
+    <div id="inp-ltcg-q2"></div>
+    <div id="inp-ltcg-q3"></div>
+    <div id="inp-ltcg-q4"></div>
+
+    <div class="sub-label">Short-Term Gains / Losses by Quarter</div>
+    <div class="hint" id="st-hint">Ordinary income rate · Negative = loss · Net: <strong>$0.00</strong></div>
+    <div id="inp-st-q1"></div>
+    <div id="inp-st-q2"></div>
+    <div id="inp-st-q3"></div>
+    <div id="inp-st-q4"></div>
+
+    <hr class="divider">
+    <div class="section-label">Roth Conversions by Quarter</div>
+    <div class="hint">Enter conversion amount in each quarter — leave $0 if none</div>
+    <div id="inp-conv-q1"></div>
+    <div id="inp-conv-q2"></div>
+    <div id="inp-conv-q3"></div>
+    <div id="inp-conv-q4"></div>
+    <div id="conv-summary"></div>
+
+    <hr class="divider">
+    <div class="section-label">OBBBA Senior Deduction (2025–2028)</div>
+    <div class="sub-label">Qualifying seniors age 65+</div>
+    <div class="senior-btns">
+      <button class="senior-btn" id="btn-s1" onclick="setSeniors(1)">1 Senior</button>
+      <button class="senior-btn active" id="btn-s2" onclick="setSeniors(2)">2 Seniors</button>
+    </div>
+    <div id="obbba-info" class="info-green"></div>
+
+    <hr class="divider">
+    <div id="inp-prior-fed"></div>
+    <div id="inp-prior-nj"></div>
+    <div id="inp-withholding"></div>
+
+    <hr class="divider">
+    <div class="section-label">2026 Estimated Payments Made</div>
+    <div class="hint">Enter what you've actually paid each quarter</div>
+
+    <div class="sub-label">Federal</div>
+    <div id="inp-fed-paid-q1"></div>
+    <div id="inp-fed-paid-q2"></div>
+    <div id="inp-fed-paid-q3"></div>
+    <div id="inp-fed-paid-q4"></div>
+
+    <div class="sub-label" style="margin-top:8px">New Jersey</div>
+    <div id="inp-nj-paid-q1"></div>
+    <div id="inp-nj-paid-q2"></div>
+    <div id="inp-nj-paid-q3"></div>
+    <div id="inp-nj-paid-q4"></div>
+
+    <hr class="divider">
+    <div class="summary-grid" id="summary-tiles"></div>
+    <div id="nj-rie-alert"></div>
+    <div class="info-tan" style="margin-top:8px">
+      📊 LT gains taxed at federal LTCG rates (0/15/20%), ordinary in NJ. ST gains/losses are ordinary income both federal and NJ. ST losses offset LT gains before LTCG rates apply.
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="section-title">Quarterly Payments <span id="conv-quarters-note" style="font-weight:400;font-size:12px;color:#6b4f2e"></span></div>
+
+    <div id="balance-due-section"></div>
+
+    <div class="intro-text">
+      In quarters <strong>without</strong> a conversion, Annualized and Full Coverage payments are lower than Safe Harbor.
+      Conversion quarters catch up. Green = less than safe harbor · Red = more than safe harbor.
+    </div>
+
+    <div class="card" id="sh-comparison-card"></div>
+
+    <div id="fed-table-wrap"></div>
+    <div id="nj-table-wrap"></div>
+
+    <div class="legend">
+      <div class="legend-title">How to read this</div>
+      <div><span style="color:#5a7a3a;font-weight:700">Safe Harbor</span> — 4 equal payments totaling 110% of your 2025 tax. No penalty risk. May over- or under-pay vs. actual.</div>
+      <div><span style="color:#3d6020;font-weight:700">Annualized Min</span> — minimum payments under IRS Schedule AI to avoid underpayment penalty. Low in non-conversion quarters. Q4 (Jan 15) includes the full remaining balance — nothing left at filing.</div>
+      <div><span style="color:#1a4a7a;font-weight:700">Full Coverage</span> — same timing but sized to pay your entire year's tax. Q4 covers everything — nothing due at filing.</div>
+      <div class="legend-note">
+        Federal safe harbor = lesser of 110% of 2025 tax OR 90% of 2026 tax. NJ = lesser of 100% of 2025 tax OR 80% of 2026 NJ tax. Annualized = IRS Schedule AI / NJ-2210 principles (22.5% factor). These are estimates — consult your CPA before making payments.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== TAX CONSTANTS =====
+const FED_BRACKETS = [
+  { min: 0,       max: 23850,    rate: 0.10 },
+  { min: 23850,   max: 96950,    rate: 0.12 },
+  { min: 96950,   max: 206700,   rate: 0.22 },
+  { min: 206700,  max: 394600,   rate: 0.24 },
+  { min: 394600,  max: 501050,   rate: 0.32 },
+  { min: 501050,  max: 751600,   rate: 0.35 },
+  { min: 751600,  max: Infinity, rate: 0.37 },
+];
+const FED_STD_MFJ = 35500;
+const OBBBA_PER_PERSON = 6000;
+const OBBBA_PHASEOUT_START = 150000;
+const OBBBA_PHASEOUT_RATE  = 0.06;
+
+const LTCG_BRACKETS = [
+  { min: 0,       max: 96700,    rate: 0.00 },
+  { min: 96700,   max: 600050,   rate: 0.15 },
+  { min: 600050,  max: Infinity, rate: 0.20 },
+];
+
+const NJ_BRACKETS = [
+  { min: 0,       max: 20000,    rate: 0.01400 },
+  { min: 20000,   max: 50000,    rate: 0.01750 },
+  { min: 50000,   max: 70000,    rate: 0.02450 },
+  { min: 70000,   max: 80000,    rate: 0.03500 },
+  { min: 80000,   max: 150000,   rate: 0.05525 },
+  { min: 150000,  max: 500000,   rate: 0.06370 },
+  { min: 500000,  max: Infinity, rate: 0.08970 },
+];
+const NJ_EXEMPTION  = 4000;
+const NJ_RIE_MAX    = 100000;
+const NJ_RIE_CLIFF  = 150000;
+const NIIT_THRESHOLD = 250000;
+const NIIT_RATE      = 0.038;
+
+const PERIODS = [
+  { label:"Q1", range:"Jan–Mar", months:3,  factor:4.0,  due:"Apr 15, 2026",  wFrac:3/12  },
+  { label:"Q2", range:"Apr–May", months:5,  factor:2.4,  due:"Jun 16, 2026",  wFrac:5/12  },
+  { label:"Q3", range:"Jun–Aug", months:8,  factor:1.5,  due:"Sep 15, 2026",  wFrac:8/12  },
+  { label:"Q4", range:"Sep–Dec", months:12, factor:1.0,  due:"Jan 15, 2027",  wFrac:12/12 },
+];
+const ANN_FRACS = [0.225, 0.45, 0.675, 0.90];
+
+// ===== STATE =====
+const S = {
+  annuity:    31195,
+  niit:       18324,
+  ss:         0,
+  divByQ:     [3772, 1544, 4276, 4437],
+  ltcgByQ:    [13174, 0, 0, 0],
+  stByQ:      [-243.26, 0, 0, 0],
+  convByQ:    [100000, 0, 0, 0],
+  priorFed:   34421,
+  priorNJ:    9146,
+  withholding:0,
+  numSeniors: 2,
+  fedPaid:    [0, 0, 0, 0],
+  njPaid:     [0, 0, 0, 0],
+};
+
+// ===== TAX FUNCTIONS =====
+function calcTax(income, brackets) {
+  let tax = 0;
+  for (const b of brackets) {
+    if (income <= b.min) break;
+    tax += (Math.min(income, b.max) - b.min) * b.rate;
+  }
+  return Math.max(0, tax);
+}
+
+function obbbaDed(magi, numSeniors) {
+  const pp = Math.max(0, OBBBA_PER_PERSON - OBBBA_PHASEOUT_RATE * Math.max(0, magi - OBBBA_PHASEOUT_START));
+  return pp * numSeniors;
+}
+
+function calcFedTax(ordIncome, ltcgIncome, magi, numSeniors) {
+  const obbba = obbbaDed(magi, numSeniors);
+  const ordTaxable = Math.max(0, ordIncome - FED_STD_MFJ - obbba);
+  const ordTax  = calcTax(ordTaxable, FED_BRACKETS);
+  const ltcgTax = calcTax(ordTaxable + ltcgIncome, LTCG_BRACKETS) - calcTax(ordTaxable, LTCG_BRACKETS);
+  return ordTax + Math.max(0, ltcgTax);
+}
+
+function calcNIIT(magi, nii) {
+  if (magi <= NIIT_THRESHOLD) return 0;
+  return Math.max(0, Math.min(nii, magi - NIIT_THRESHOLD)) * NIIT_RATE;
+}
+
+function njRIEFraction(totalIncome) {
+  if (totalIncome < 100000) return 1.00;
+  if (totalIncome < 125000) return 0.50;
+  if (totalIncome < 150000) return 0.25;
+  return 0;
+}
+
+function calcNJTax(totalNJIncome, annuityIncome) {
+  const rieFrac = njRIEFraction(totalNJIncome);
+  const rie     = Math.min(annuityIncome, NJ_RIE_MAX) * rieFrac;
+  const taxable = Math.max(0, totalNJIncome - rie - NJ_EXEMPTION);
+  return calcTax(taxable, NJ_BRACKETS);
+}
+
+function cumArr(arr) {
+  return arr.map((_, i) => arr.slice(0, i + 1).reduce((s, v) => s + v, 0));
+}
+
+function calcAll() {
+  const { annuity, niit: niitAnnuity, ss, divByQ, ltcgByQ, stByQ, convByQ: conversions,
+          priorFed, priorNJ, withholding, numSeniors, fedPaid, njPaid } = S;
+
+  const ssTaxable = ss * 0.85;
+  const totalDiv  = divByQ.reduce((s,v)=>s+v,0);
+  const totalLTCG = ltcgByQ.reduce((s,v)=>s+v,0);
+  const totalST   = stByQ.reduce((s,v)=>s+v,0);
+  const totalConv = conversions.reduce((s,v)=>s+v,0);
+
+  const convCum = cumArr(conversions);
+  const divCum  = cumArr(divByQ);
+  const ltcgCum = cumArr(ltcgByQ);
+  const stCum   = cumArr(stByQ);
+
+  const regOrdFed   = annuity + totalDiv + ssTaxable + Math.max(0, totalST);
+  const totalOrdFed = regOrdFed + totalConv;
+  const netLTCG     = Math.max(0, totalLTCG + Math.min(0, totalST));
+  const regMAGI     = regOrdFed + netLTCG;
+  const totalMAGI   = totalOrdFed + netLTCG;
+
+  const fullFedTax = calcFedTax(totalOrdFed, netLTCG, totalMAGI, numSeniors)
+                   + calcNIIT(totalMAGI, niitAnnuity + totalDiv + netLTCG);
+  const regFedTax  = calcFedTax(regOrdFed, netLTCG, regMAGI, numSeniors)
+                   + calcNIIT(regMAGI, niitAnnuity + totalDiv + netLTCG);
+
+  const obbbaFull = obbbaDed(totalMAGI, numSeniors);
+  const obbbaReg  = obbbaDed(regMAGI, numSeniors);
+
+  const totalNJGains = totalLTCG + totalST;
+  const regNJInc     = annuity + totalDiv + totalNJGains;
+  const totalNJInc   = regNJInc + totalConv;
+
+  const fullNJTax = calcNJTax(totalNJInc, annuity);
+  const regNJTax  = calcNJTax(regNJInc,   annuity);
+  const njCliff   = regNJInc < NJ_RIE_CLIFF && totalNJInc >= NJ_RIE_CLIFF;
+
+  const rieFracFull   = njRIEFraction(totalNJInc);
+  const rieApplied    = Math.min(annuity, NJ_RIE_MAX) * rieFracFull;
+  const riePct        = Math.round(rieFracFull * 100);
+
+  // Safe Harbor
+  const fedSH_priorYr = priorFed * 1.10;
+  const fedSH_currYr  = fullFedTax * 0.90;
+  const fedSHTot      = Math.min(fedSH_priorYr, fedSH_currYr);
+  const fedSHMethod   = fedSH_currYr < fedSH_priorYr ? "90% of 2026 tax" : "110% of 2025 tax";
+  const njSH_priorYr  = priorNJ * 1.00;
+  const njSH_currYr   = fullNJTax * 0.80;
+  const njSHTot       = Math.min(njSH_priorYr, njSH_currYr);
+  const njSHMethod    = njSH_currYr < njSH_priorYr ? "80% of 2026 NJ tax" : "100% of 2025 NJ tax";
+
+  const fedSH110Q        = Math.max(0, priorFed * 1.10 - withholding) / 4;
+  const njSH110Q         = priorNJ * 1.00 / 4;
+  const fedSH110Q4       = Math.max(0, fullFedTax - withholding - fedSH110Q * 3);
+  const njSH110Q4        = Math.max(0, fullNJTax  - njSH110Q * 3);
+  const fedSH110Payments = [fedSH110Q, fedSH110Q, fedSH110Q, fedSH110Q4];
+  const njSH110Payments  = [njSH110Q,  njSH110Q,  njSH110Q,  njSH110Q4];
+
+  // Annualized Minimum
+  const annCumFed = PERIODS.map((p, i) => {
+    const annuityYTD = annuity * (p.months / 12);
+    const ssYTD      = ssTaxable * (p.months / 12);
+    const ytdST      = stCum[i];
+    const ytdOrd     = annuityYTD + ssYTD + divCum[i] + Math.max(0, ytdST) + convCum[i];
+    const ytdNetLTCG = Math.max(0, ltcgCum[i] + Math.min(0, ytdST));
+    const annOrd     = ytdOrd * p.factor;
+    const annLTCG    = ytdNetLTCG * p.factor;
+    const annDiv     = divCum[i] * p.factor;
+    const annNIITAnn = niitAnnuity * (p.months / 12) * p.factor;
+    const annMAGI    = annOrd + annLTCG;
+    const annTax     = calcFedTax(annOrd, annLTCG, annMAGI, numSeniors)
+                     + calcNIIT(annMAGI, annNIITAnn + annDiv + annLTCG);
+    return Math.max(0, annTax * ANN_FRACS[i] - withholding * p.wFrac);
+  });
+  const annCumNJ = PERIODS.map((p, i) => {
+    const annuityYTD = annuity * (p.months / 12);
+    const ytdNJGains = ltcgCum[i] + stCum[i];
+    const ytdNJ      = annuityYTD + divCum[i] + ytdNJGains + convCum[i];
+    const annNJInc   = ytdNJ * p.factor;
+    const annAnnuity = annuityYTD * p.factor;
+    return Math.max(0, calcNJTax(annNJInc, annAnnuity) * ANN_FRACS[i]);
+  });
+  const annPayFed = annCumFed.map((c, i) => Math.max(0, c - (i > 0 ? annCumFed[i-1] : 0)));
+  const annPayNJ  = annCumNJ.map((c, i)  => Math.max(0, c - (i > 0 ? annCumNJ[i-1]  : 0)));
+  const annBalFed = Math.max(0, fullFedTax - withholding - annPayFed.reduce((s,v)=>s+v,0));
+  const annBalNJ  = Math.max(0, fullNJTax  - annPayNJ.reduce((s,v)=>s+v,0));
+  const annPayFedAdj = annPayFed.map((v, i) => i === 3 ? v + annBalFed : v);
+  const annPayNJAdj  = annPayNJ.map((v, i)  => i === 3 ? v + annBalNJ  : v);
+
+  // Full Coverage
+  const fcCumFed = PERIODS.map((p, i) => {
+    const annuityYTD = annuity * (p.months / 12);
+    const ssYTD      = ssTaxable * (p.months / 12);
+    const ytdST      = stCum[i];
+    const ytdOrd     = annuityYTD + ssYTD + divCum[i] + Math.max(0, ytdST) + convCum[i];
+    const ytdNetLTCG = Math.max(0, ltcgCum[i] + Math.min(0, ytdST));
+    const ytdMAGI    = ytdOrd + ytdNetLTCG;
+    const ytdNIITAnn = niitAnnuity * (p.months / 12);
+    return calcFedTax(ytdOrd, ytdNetLTCG, ytdMAGI, numSeniors)
+         + calcNIIT(ytdMAGI, ytdNIITAnn + divCum[i] + ytdNetLTCG);
+  });
+  const fcCumNJ = PERIODS.map((p, i) => {
+    const annuityYTD = annuity * (p.months / 12);
+    const ytdNJGains = ltcgCum[i] + stCum[i];
+    const ytdNJ      = annuityYTD + divCum[i] + ytdNJGains + convCum[i];
+    return calcNJTax(ytdNJ, annuityYTD);
+  });
+  const fcPayFed = fcCumFed.map((c, i) => {
+    const wPrev = withholding * (i > 0 ? PERIODS[i-1].wFrac : 0);
+    const wCurr = withholding * PERIODS[i].wFrac;
+    return Math.max(0, c - (i > 0 ? fcCumFed[i-1] : 0) - (wCurr - wPrev));
+  });
+  const fcPayNJ  = fcCumNJ.map((c, i) => Math.max(0, c - (i > 0 ? fcCumNJ[i-1] : 0)));
+  const fcBalFed = Math.max(0, fullFedTax - withholding - fcPayFed.reduce((s,v)=>s+v,0));
+  const fcBalNJ  = Math.max(0, fullNJTax  - fcPayNJ.reduce((s,v)=>s+v,0));
+  const fcPayFedAdj = fcPayFed.map((v, i) => i === 3 ? v + fcBalFed : v);
+  const fcPayNJAdj  = fcPayNJ.map((v, i)  => i === 3 ? v + fcBalNJ  : v);
+
+  const fedPaidTotal  = fedPaid.reduce((s,v)=>s+v,0);
+  const njPaidTotal   = njPaid.reduce((s,v)=>s+v,0);
+  const fedBalanceDue = fullFedTax - withholding - fedPaidTotal;
+  const njBalanceDue  = fullNJTax  - njPaidTotal;
+
+  return {
+    totalMAGI, totalNJInc, fullFedTax, fullNJTax, njCliff,
+    rieApplied, riePct, obbbaFull, obbbaReg,
+    fedSH_priorYr, fedSH_currYr, njSH_priorYr, njSH_currYr,
+    fedSHTot, njSHTot, fedSHMethod, njSHMethod,
+    fedSH110Payments, njSH110Payments,
+    annPayFed: annPayFedAdj, annPayNJ: annPayNJAdj,
+    annTotFed: annPayFedAdj.reduce((s,v)=>s+v,0),
+    annTotNJ:  annPayNJAdj.reduce((s,v)=>s+v,0),
+    fcPayFed: fcPayFedAdj, fcPayNJ: fcPayNJAdj,
+    fcTotFed: fcPayFedAdj.reduce((s,v)=>s+v,0),
+    fcTotNJ:  fcPayNJAdj.reduce((s,v)=>s+v,0),
+    fedPaidTotal, njPaidTotal, fedBalanceDue, njBalanceDue,
+    totalConv, totalDiv: divByQ.reduce((s,v)=>s+v,0),
+    totalLTCG, totalST,
+  };
+}
+
+// ===== FORMATTING =====
+function fmt(n) {
+  const abs = Math.abs(n);
+  const str = abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n < 0 ? `($${str})` : `$${str}`;
+}
+
+// ===== INPUT COMPONENT =====
+function makeInput(containerId, label, key, idx, note, allowNeg) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = `
+    <div class="num-input-wrap">
+      <label><span class="lbl">${label}</span>${note ? `<span class="note">${note}</span>` : ''}</label>
+      <div class="input-row" id="row-${containerId}">
+        <span class="prefix">$</span>
+        <input type="text" inputmode="decimal" id="input-${containerId}" autocomplete="off">
+      </div>
+    </div>`;
+  const input = document.getElementById(`input-${containerId}`);
+  const row   = document.getElementById(`row-${containerId}`);
+
+  function getVal() {
+    if (idx !== undefined) return S[key][idx];
+    return S[key];
+  }
+  function setVal(v) {
+    if (idx !== undefined) S[key] = S[key].map((x, i) => i === idx ? v : x);
+    else S[key] = v;
+  }
+
+  function formatDisplay(v) {
+    if (v === 0) return "0.00";
+    const abs = Math.abs(v);
+    const str = abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return v < 0 ? `-${str}` : str;
+  }
+
+  function refresh() {
+    const v = getVal();
+    input.value = formatDisplay(v);
+    if (v < 0) row.classList.add('negative'); else row.classList.remove('negative');
+  }
+  refresh();
+
+  input.addEventListener('focus', () => {
+    const v = getVal();
+    input.value = v === 0 ? '' : String(v);
+    input.select();
+  });
+  input.addEventListener('input', () => {
+    let cleaned = input.value;
+    cleaned = allowNeg ? cleaned.replace(/[^0-9.\-]/g, '') : cleaned.replace(/[^0-9.]/g, '');
+    if (allowNeg) cleaned = cleaned.replace(/(?!^)-/g, '');
+    const parts = cleaned.split('.');
+    if (parts.length > 2) cleaned = parts[0] + '.' + parts.slice(1).join('');
+    if (parts[1] !== undefined && parts[1].length > 2) cleaned = parts[0] + '.' + parts[1].slice(0,2);
+    input.value = cleaned;
+    const num = parseFloat(cleaned);
+    setVal(isNaN(num) ? 0 : num);
+    update();
+  });
+  input.addEventListener('blur', () => refresh());
+
+  return refresh;
+}
+
+// ===== SENIOR TOGGLE =====
+function setSeniors(n) {
+  S.numSeniors = n;
+  document.getElementById('btn-s1').className = 'senior-btn' + (n === 1 ? ' active' : '');
+  document.getElementById('btn-s2').className = 'senior-btn' + (n === 2 ? ' active' : '');
+  update();
+}
+
+// ===== RENDER =====
+function update() {
+  const r = calcAll();
+  const { totalConv, totalDiv, totalLTCG, totalST } = r;
+  const convQs = S.convByQ.map(v => v > 0);
+
+  // Hints
+  document.getElementById('div-hint').innerHTML  = `Enter actual received each period · Total: <strong>${fmt(totalDiv)}</strong>`;
+  document.getElementById('ltcg-hint').innerHTML = `Federal LTCG rates (0/15/20%) · NJ ordinary · Total: <strong>${fmt(totalLTCG)}</strong>`;
+  const stColor = totalST < 0 ? '#3d6020' : '#2d1f0e';
+  document.getElementById('st-hint').innerHTML   = `Ordinary income rate · Negative = loss · Net: <strong style="color:${stColor}">${fmt(totalST)}</strong>`;
+
+  // Conv summary
+  const convSummary = document.getElementById('conv-summary');
+  if (totalConv > 0) {
+    const qCount = S.convByQ.filter(v => v > 0).length;
+    convSummary.innerHTML = `<div class="info-tan" style="margin-bottom:4px">Total conversion: <strong style="color:#2d1f0e">${fmt(totalConv)}</strong>${qCount > 1 ? ` <span style="color:#c07830;font-weight:700">· ${qCount} quarters</span>` : ''}</div>`;
+  } else {
+    convSummary.innerHTML = '';
+  }
+
+  // Conv quarters note
+  const convNote = document.getElementById('conv-quarters-note');
+  const convLabels = PERIODS.filter((_,i) => convQs[i]).map(p => p.label).join(', ');
+  convNote.textContent = totalConv > 0 ? `— Conversions: ${convLabels}` : '';
+
+  // OBBBA info
+  const obbba = r.obbbaFull;
+  let obbbaHtml = `<div style="font-weight:700;margin-bottom:3px">OBBBA deduction: ${fmt(obbba)}</div>
+    <div style="opacity:0.85">Std deduction: $35,500 · OBBBA: ${fmt(obbba)} · Total: ${fmt(35500 + obbba)}</div>`;
+  if (obbba > 0 && obbba < S.numSeniors * 6000) {
+    obbbaHtml += `<div style="margin-top:3px;color:#8B6914;font-weight:600">⚠ Partially phased out (MAGI ${fmt(r.totalMAGI)} &gt; $150K)</div>`;
+  }
+  if (obbba === 0) {
+    obbbaHtml += `<div style="margin-top:3px;color:#a02010;font-weight:600">✗ Fully phased out (MAGI &gt; $250K)</div>`;
+  }
+  document.getElementById('obbba-info').innerHTML = obbbaHtml;
+
+  // Summary tiles
+  const tiles = [['Fed AGI', r.totalMAGI], ['NJ Income', r.totalNJInc], ['Full Fed Tax', r.fullFedTax], ['Full NJ Tax', r.fullNJTax]];
+  document.getElementById('summary-tiles').innerHTML = tiles.map(([lbl, val]) =>
+    `<div class="summary-tile"><div class="tile-lbl">${lbl}</div><div class="tile-val">${fmt(val)}</div></div>`
+  ).join('');
+
+  // NJ RIE alert
+  const rieEl = document.getElementById('nj-rie-alert');
+  if (r.njCliff) {
+    rieEl.innerHTML = `<div class="info-yellow">⚠ <strong>NJ RIE lost:</strong> Conversion pushes NJ income over $150K — full exclusion eliminated. Consider sizing conversion to stay below $150K (full), $125K (25% excl.), or $100K (50% excl.).</div>`;
+  } else if (r.rieApplied > 0) {
+    const zone = r.totalNJInc > 100000 && r.totalNJInc < 150000 ? ' Income in phase-out zone ($100K–$150K).' : '';
+    rieEl.innerHTML = `<div class="info-green" style="margin-top:12px">✓ <strong>NJ RIE (${r.riePct}% tier):</strong> ${fmt(r.rieApplied)} excluded from NJ tax.${zone}</div>`;
+  } else if (S.annuity > 0) {
+    rieEl.innerHTML = `<div class="info-yellow">⚠ <strong>NJ RIE = $0:</strong> NJ income over $150K — no exclusion applies.</div>`;
+  } else {
+    rieEl.innerHTML = '';
+  }
+
+  // Balance due section
+  const balEl = document.getElementById('balance-due-section');
+  const hasPaid = r.fedPaidTotal > 0 || r.njPaidTotal > 0;
+  if (hasPaid) {
+    balEl.innerHTML = `<div class="card">
+      <div class="card-title">Year-End Balance — Based on Payments Made</div>
+      <div class="balance-grid">
+        ${[
+          { label:'Federal',     fullTax:r.fullFedTax, withh:S.withholding, paid:r.fedPaidTotal, balance:r.fedBalanceDue },
+          { label:'New Jersey',  fullTax:r.fullNJTax,  withh:0,             paid:r.njPaidTotal,  balance:r.njBalanceDue  },
+        ].map(({label,fullTax,withh,paid,balance}) => {
+          const isRefund = balance < 0;
+          const isEven   = Math.abs(balance) < 50;
+          const bg  = isEven ? '#f0f8e8' : isRefund ? '#e8f0ff' : balance > 5000 ? '#fff0f0' : '#fff8e8';
+          const bd  = isEven ? '#a0c870' : isRefund ? '#7090d0' : balance > 5000 ? '#d07060' : '#d0b060';
+          const tx  = isEven ? '#3d6020' : isRefund ? '#1a3a7a' : balance > 5000 ? '#a02010' : '#7a5c00';
+          const statusText = isEven ? '✓ Even' : isRefund ? '⬇ Refund' : '⬆ Still owed';
+          const amtText    = isRefund ? `(${fmt(-balance)})` : fmt(balance);
+          return `<div class="balance-card" style="background:${bg};border:1px solid ${bd}">
+            <div class="bc-title">${label}</div>
+            <div class="balance-row"><span class="bc-lbl">Full year tax</span><span class="bc-val">${fmt(fullTax)}</span></div>
+            ${withh > 0 ? `<div class="balance-row"><span class="bc-lbl">Withholding</span><span class="bc-val green">− ${fmt(withh)}</span></div>` : ''}
+            <div class="balance-row"><span class="bc-lbl">Payments made</span><span class="bc-val green">− ${fmt(paid)}</span></div>
+            <div class="balance-divider" style="border-color:${bd}">
+              <span class="bc-status" style="color:${tx}">${statusText}</span>
+              <span class="bc-amount" style="color:${tx}">${amtText}</span>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="balance-note">Updates live as you adjust income and conversion amounts above.</div>
+    </div>`;
+  } else {
+    balEl.innerHTML = '';
+  }
+
+  // Safe harbor comparison
+  document.getElementById('sh-comparison-card').innerHTML = `
+    <div class="card-title">Safe Harbor — which test applies?</div>
+    <div class="sh-grid">
+      ${[
+        ['Federal: 110% of 2025 tax', fmt(r.fedSH_priorYr), 'prior year', r.fedSH_priorYr <= r.fedSH_currYr],
+        ['Federal: 90% of 2026 tax',  fmt(r.fedSH_currYr),  'current year', r.fedSH_currYr < r.fedSH_priorYr],
+        ['NJ: 100% of 2025 tax',      fmt(r.njSH_priorYr),  'prior year', r.njSH_priorYr <= r.njSH_currYr],
+        ['NJ: 80% of 2026 NJ tax',    fmt(r.njSH_currYr),   'current year', r.njSH_currYr < r.njSH_priorYr],
+      ].map(([lbl, val, tag, winner]) =>
+        `<div class="sh-card${winner ? ' winner' : ''}">
+          <div class="sh-lbl">${lbl}${winner ? ' ✓ USE THIS' : ''}</div>
+          <div class="sh-val">${val}</div>
+          <div class="sh-tag">${tag}</div>
+        </div>`
+      ).join('')}
+    </div>
+    <div class="sh-footer">You use whichever is <strong>lower</strong>. Currently using: <strong style="color:#8B6914">Federal: ${r.fedSHMethod} · NJ: ${r.njSHMethod}</strong></div>`;
+
+  // Tables
+  renderQTable('fed-table-wrap', 'Federal',     r.fedSH110Payments, r.annPayFed, r.fcPayFed,
+    r.fedSH110Payments.reduce((s,v)=>s+v,0), r.annTotFed, r.fcTotFed,
+    convQs, S.fedPaid, S.withholding, 'SH 110% Prior Year');
+  renderQTable('nj-table-wrap',  'New Jersey',  r.njSH110Payments,  r.annPayNJ,  r.fcPayNJ,
+    r.njSH110Payments.reduce((s,v)=>s+v,0),  r.annTotNJ,  r.fcTotNJ,
+    convQs, S.njPaid,  0,             'SH 100% Prior Year');
+}
+
+const COL_COLORS = ['#5a7a3a', '#3d6020', '#1a4a7a'];
+const COL_SUBS   = ['flat Q1–Q3 · true-up Q4', 'schedule AI · low Q1–Q3', 'pays full year tax'];
+
+function renderQTable(containerId, title, sh110, ann, fc, tot1, tot2, tot3, convQs, paid, withh, shLabel) {
+  const cols    = [shLabel, 'Annualized Min', 'Full Coverage'];
+  const totals  = [tot1, tot2, tot3];
+  const payments = [sh110, ann, fc];
+  const paidTotal = paid.reduce((s,v)=>s+v,0);
+  const hasPaid   = paidTotal > 0;
+
+  let html = `<div class="qtable-title">${title}</div><div class="qtable-wrap"><table>
+    <thead><tr>
+      <th class="period-col">Period</th>
+      <th class="due-col">Due</th>
+      ${cols.map((c,ci) => `<th style="text-align:right;padding:10px 14px;background:${COL_COLORS[ci]};color:white;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase">
+        ${c}<br><span style="font-weight:400;font-size:10px;opacity:0.85">${COL_SUBS[ci]}</span></th>`).join('')}
+    </tr></thead><tbody>`;
+
+  PERIODS.forEach((p, i) => {
+    const isConv = convQs[i];
+    const isQ4   = i === 3;
+    const paidQ  = paid[i];
+    html += `<tr class="${isConv ? 'conv-row' : 'normal-row'}">
+      <td class="period-cell">
+        <span class="period-badge ${isConv ? 'conv' : 'plain'}">${p.label}</span>
+        <span class="period-range">${p.range}</span>
+        ${isConv ? `<span class="conv-tag">↑ CONVERSION</span>` : ''}
+        ${isQ4 && !isConv ? `<span class="q4-tag">incl. balance</span>` : ''}
+      </td>
+      <td class="due-cell">${p.due}${paidQ > 0 ? `<div class="paid-tag">paid ${fmt(paidQ)}</div>` : ''}</td>
+      ${payments.map((pm, ci) => `<td class="amount-cell" style="font-weight:${isConv||isQ4?700:400};color:${COL_COLORS[ci]}">${fmt(pm[i])}</td>`).join('')}
+    </tr>`;
+  });
+
+  html += `</tbody><tfoot><tr>
+    <td colspan="2">Full-year total</td>
+    ${totals.map((v,ci) => `<td class="total-amt" style="color:${COL_COLORS[ci]}">${fmt(v)}</td>`).join('')}
+  </tr>`;
+
+  if (hasPaid) {
+    html += `<tr class="paid-row">
+      <td colspan="2" class="paid-summary" style="padding:9px 14px">
+        <span style="font-weight:700">Paid so far: </span>
+        <span style="color:#3d6020;font-weight:700;font-family:monospace">${fmt(paidTotal)}</span>
+        ${withh > 0 ? `<span style="color:#6b4f2e"> + ${fmt(withh)} withholding</span>` : ''}
+      </td>
+      ${totals.map((t, ci) => {
+        const bal = t - withh - paidTotal;
+        const isRefund = bal < 0;
+        const color = isRefund ? '#1a3a7a' : Math.abs(bal) < 1 ? '#3d6020' : '#a02010';
+        const text  = isRefund ? `${fmt(-bal)} refund` : Math.abs(bal) < 1 ? '✓ even' : `${fmt(bal)} still owed`;
+        return `<td class="paid-bal" style="padding:9px 14px;color:${color}">${text}</td>`;
+      }).join('')}
+    </tr>`;
+  }
+
+  html += `</tfoot></table></div>`;
+  document.getElementById(containerId).innerHTML = html;
+}
+
+// ===== INIT INPUTS =====
+makeInput('inp-annuity',     'Annuity (annual)',                    'annuity',     undefined, 'prorated evenly');
+makeInput('inp-niit',        'NIIT Annuity (1099-R box 7 code D)', 'niit',        undefined, 'annual · Form 8960 line 3');
+makeInput('inp-ss',          'Social Security',                     'ss',          undefined, '85% fed / 0% NJ');
+
+PERIODS.forEach((p, i) => {
+  makeInput(`inp-div-q${i+1}`,  `${p.label} (${p.range})`, 'divByQ',  i);
+  makeInput(`inp-ltcg-q${i+1}`, `${p.label} (${p.range})`, 'ltcgByQ', i, '', true);
+  makeInput(`inp-st-q${i+1}`,   `${p.label} (${p.range})`, 'stByQ',   i, '', true);
+  makeInput(`inp-conv-q${i+1}`, `${p.label} (${p.range})`, 'convByQ', i);
+  makeInput(`inp-fed-paid-q${i+1}`, `${p.label} (${p.range}) — due ${p.due}`, 'fedPaid', i);
+  makeInput(`inp-nj-paid-q${i+1}`,  `${p.label} (${p.range}) — due ${p.due}`, 'njPaid',  i);
+});
+
+makeInput('inp-prior-fed',   '2025 Federal Tax',     'priorFed',    undefined);
+makeInput('inp-prior-nj',    '2025 NJ Tax',          'priorNJ',     undefined);
+makeInput('inp-withholding', '2026 Fed Withholding', 'withholding', undefined, 'from annuity etc.');
+
+update();
+</script>
+</body>
 </html>
