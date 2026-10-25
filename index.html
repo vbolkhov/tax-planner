@@ -3,751 +3,1192 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>2026 Estimated Tax Planner</title>
+<title>Roth Conversion Forecaster</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Georgia', serif; background: #f5efe6; color: #2d1f0e; min-height: 100vh; }
-  .header { background: #2d1f0e; padding: 18px 28px; }
-  .header h1 { font-size: 20px; font-weight: 700; color: #f5efe6; }
-  .header p  { font-size: 12px; color: #c4a882; margin-top: 2px; }
-  .layout { display: grid; grid-template-columns: 290px 1fr; min-height: calc(100vh - 62px); }
-  .sidebar { background: #faf7f2; border-right: 1px solid #e8dfd0; padding: 18px 16px; overflow-y: auto; }
-  .main    { padding: 22px 26px; overflow-y: auto; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f9f9f7; color: #1a1a1a; font-size: 14px; }
+  .app { max-width: 100%; margin: 0 auto; padding: 1.5rem 2rem; }
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+  .header h1 { font-size: 18px; font-weight: 600; }
+  /* sync-btn rules removed — Monarch sync not available outside Claude.ai due to OAuth */
 
-  .section-label { font-size: 11px; font-weight: 700; color: #c4a882; letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 10px; }
-  .sub-label     { font-size: 11px; font-weight: 700; color: #6b4f2e; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 4px; margin-top: 8px; }
-  .hint          { font-size: 10px; color: #c4a882; margin-bottom: 8px; }
-  .divider       { border: none; border-top: 1px solid #e8dfd0; margin: 14px 0; }
+  .balance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 1.5rem; }
+  .metric { background: white; border: 1px solid #e8e8e5; border-radius: 12px; padding: 1rem 1.25rem; }
+  .metric-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .metric-value { font-size: 22px; font-weight: 600; }
+  .metric-value.trad { color: #854F0B; }
+  .metric-value.roth { color: #0F6E56; }
 
-  .num-input-wrap { margin-bottom: 11px; }
-  .num-input-wrap label { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
-  .num-input-wrap label span.lbl  { font-size: 11px; font-weight: 700; color: #6b4f2e; letter-spacing: 0.05em; text-transform: uppercase; }
-  .num-input-wrap label span.note { font-size: 10px; color: #c4a882; }
-  .input-row { display: flex; align-items: center; background: white; border: 1px solid #e8dfd0; border-radius: 6px; }
-  .input-row.negative { border-color: #3d6020; }
-  .input-row .prefix { padding: 7px 8px 7px 10px; color: #c4a882; font-size: 13px; font-weight: 700; }
-  .input-row.negative .prefix { color: #3d6020; }
-  .input-row input { flex: 1; padding: 7px 8px 7px 0; border: none; background: transparent; outline: none;
-    font-size: 14px; color: #2d1f0e; font-family: 'Georgia', serif; }
-  .input-row.negative input { color: #3d6020; }
+  .section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #999; margin-bottom: 0.75rem; }
+  .card { background: white; border: 1px solid #e8e8e5; border-radius: 12px; padding: 1.25rem; margin-bottom: 1.25rem; }
 
-  .senior-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
-  .senior-btn { padding: 8px 6px; border-radius: 7px; border: 1px solid #e8dfd0; background: white;
-    color: #6b4f2e; cursor: pointer; font-family: 'Georgia', serif; font-weight: 700; font-size: 13px; }
-  .senior-btn.active { border: 2px solid #f0c070; background: #2d1f0e; color: #f0c070; }
+  .input-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .input-row:last-child { margin-bottom: 0; }
+  .input-label { font-size: 13px; color: #444; flex: 1.2; }
+  .input-val { font-size: 13px; font-weight: 600; color: #1a1a1a; min-width: 90px; text-align: right; }
+  input[type=range] { flex: 1; accent-color: #3B5BDB; }
+  select { font-size: 13px; padding: 5px 10px; border-radius: 8px; border: 1px solid #ddd; background: white; color: #1a1a1a; }
 
-  .info-green  { background: #f0f8e8; border: 1px solid #a0c870; border-radius: 7px; padding: 9px 12px; font-size: 11px; color: #3d6020; margin-bottom: 4px; }
-  .info-yellow { background: #fff3cd; border: 1px solid #f0c060; border-radius: 7px; padding: 10px 12px; font-size: 11px; color: #7a5c00; line-height: 1.6; margin-top: 12px; }
-  .info-tan    { background: #f0e8d8; border-radius: 7px; padding: 9px 12px; font-size: 11px; color: #6b4f2e; line-height: 1.6; }
+  .summary-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 1rem; }
+  .s-metric { background: white; border: 1px solid #e8e8e5; border-radius: 10px; padding: 0.875rem 1rem; }
+  .s-label { font-size: 11px; color: #888; margin-bottom: 3px; }
+  .s-value { font-size: 17px; font-weight: 600; }
+  .s-value.amber { color: #854F0B; }
+  .s-value.green { color: #0F6E56; }
+  .s-value.red { color: #993C1D; }
 
-  .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
-  .summary-tile { background: #2d1f0e; border-radius: 7px; padding: 9px 11px; }
-  .summary-tile .tile-lbl { font-size: 10px; color: #c4a882; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-  .summary-tile .tile-val { font-size: 15px; font-weight: 700; color: #f0c070; margin-top: 3px; }
+  .warn { font-size: 12px; color: #854F0B; background: #FEF3C7; border: 1px solid #F6D860; border-radius: 8px; padding: 8px 12px; margin-bottom: 1rem; }
 
-  /* Results */
-  .section-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
-  .intro-text { font-size: 12px; color: #6b4f2e; margin-bottom: 20px; line-height: 1.75; }
+  .tab-row { display: flex; gap: 4px; margin-bottom: 1rem; }
+  .tab { font-size: 12px; padding: 5px 14px; border-radius: 8px; border: 1px solid #ddd; background: white; color: #666; cursor: pointer; font-weight: 500; }
+  .tab.active { background: #1a1a1a; color: white; border-color: #1a1a1a; }
 
-  .card { background: white; border: 1px solid #e8dfd0; border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; font-size: 12px; }
-  .card-title { font-weight: 700; color: #2d1f0e; margin-bottom: 8px; font-size: 13px; }
+  .chart-wrap { height: 230px; position: relative; }
+  canvas { width: 100% !important; }
 
-  .balance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .balance-card { border-radius: 8px; padding: 12px 14px; }
-  .balance-card .bc-title { font-weight: 700; font-size: 13px; color: #2d1f0e; margin-bottom: 8px; }
-  .balance-row { display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 11px; }
-  .balance-row .bc-lbl { color: #6b4f2e; }
-  .balance-row .bc-val { font-weight: 600; color: #2d1f0e; }
-  .balance-row .bc-val.green { color: #3d6020; }
-  .balance-divider { border-top: 1px solid; padding-top: 6px; display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
-  .balance-divider .bc-status { font-weight: 700; font-size: 12px; }
-  .balance-divider .bc-amount { font-weight: 700; font-size: 16px; }
-  .balance-note { font-size: 10px; color: #c4a882; margin-top: 10px; }
-
-  .sh-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
-  .sh-card { padding: 9px 12px; border-radius: 7px; border: 1px solid #e8dfd0; background: #faf7f2; }
-  .sh-card.winner { border-color: #3d6020; background: #f0f8e8; }
-  .sh-card .sh-lbl { font-size: 11px; color: #6b4f2e; font-weight: 700; }
-  .sh-card.winner .sh-lbl { color: #3d6020; }
-  .sh-card .sh-val { font-size: 16px; font-weight: 700; color: #2d1f0e; margin-top: 3px; }
-  .sh-card.winner .sh-val { color: #3d6020; }
-  .sh-card .sh-tag { font-size: 10px; color: #c4a882; }
-  .sh-footer { font-size: 11px; color: #6b4f2e; }
-
-  .qtable-title { font-weight: 700; font-size: 13px; color: #6b4f2e; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 8px; }
-  .qtable-wrap  { background: white; border-radius: 10px; border: 1px solid #e8dfd0; overflow: hidden; margin-bottom: 24px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  thead th { padding: 10px 14px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-  thead th.period-col { text-align: left; background: #f0e8d8; color: #6b4f2e; }
-  thead th.due-col    { text-align: center; background: #f0e8d8; color: #6b4f2e; }
-  tbody tr { border-bottom: 1px solid #e8dfd0; }
-  tbody tr.conv-row { background: #fffaf0; }
-  tbody tr.normal-row { background: white; }
-  tbody td { padding: 11px 14px; }
-  td.period-cell { }
-  td.due-cell    { text-align: center; font-size: 11px; color: #6b4f2e; }
-  td.amount-cell { text-align: right; font-family: monospace; font-size: 13px; }
-  .period-badge { display: inline-block; width: 28px; height: 28px; line-height: 28px; text-align: center;
-    border-radius: 5px; font-weight: 700; font-size: 11px; margin-right: 8px; }
-  .period-badge.conv  { background: #2d1f0e; color: #f0c070; }
-  .period-badge.plain { background: #f0e8d8; color: #6b4f2e; }
-  .period-range { font-size: 12px; color: #6b4f2e; }
-  .conv-tag  { font-size: 10px; color: #c07830; font-weight: 700; margin-left: 6px; }
-  .q4-tag    { font-size: 10px; color: #6b4f2e; margin-left: 6px; }
-  .paid-tag  { font-size: 10px; color: #3d6020; font-weight: 700; margin-top: 2px; }
-  tfoot tr { background: #f0e8d8; border-top: 2px solid #e8dfd0; }
-  tfoot td { padding: 10px 14px; font-weight: 700; font-size: 12px; color: #2d1f0e; }
-  tfoot td.total-amt { text-align: right; font-family: monospace; font-size: 13px; }
-  .paid-row td { background: #f5f0e8; border-top: 1px solid #e8dfd0; font-size: 11px; color: #6b4f2e; }
-  .paid-row .paid-summary { }
-  .paid-row .paid-bal { text-align: right; font-family: monospace; font-size: 12px; font-weight: 700; }
-
-  .legend { background: white; border: 1px solid #e8dfd0; border-radius: 10px; padding: 14px 18px; font-size: 12px; color: #6b4f2e; line-height: 1.8; }
-  .legend-title { font-weight: 700; color: #2d1f0e; margin-bottom: 5px; font-size: 13px; }
-  .legend-note  { margin-top: 8px; font-size: 11px; color: #c4a882; }
-
-  @media (max-width: 800px) {
-    .layout { grid-template-columns: 1fr; }
-    .balance-grid { grid-template-columns: 1fr; }
-    .sh-grid { grid-template-columns: 1fr 1fr; }
-    .summary-grid { grid-template-columns: 1fr 1fr; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #999; font-weight: 600; padding: 0 8px 8px; text-align: right; }
+  th:first-child { text-align: left; }
+  td { padding: 7px 8px; border-top: 1px solid #f0f0ec; text-align: right; }
+  td:first-child { text-align: left; color: #666; }
+  /* Freeze first two columns (Year, Age) during horizontal scroll */
+  #panel-table table th:nth-child(1), #panel-table table td:nth-child(1) {
+    position: sticky; left: 0; z-index: 2; background: #fff;
+    min-width: 48px; text-align: left;
   }
+  #panel-table table th:nth-child(2), #panel-table table td:nth-child(2) {
+    position: sticky; left: 48px; z-index: 2; background: #fff;
+    min-width: 40px; text-align: left;
+    box-shadow: inset -1px 0 0 #e8e8e5;
+  }
+  /* Header cells need higher z-index so they stay above body sticky cells */
+  #panel-table table thead th:nth-child(1),
+  #panel-table table thead th:nth-child(2) { z-index: 3; }
+  .pill { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
+  .pill-green { background: #D1FAE5; color: #065F46; }
+  .pill-amber { background: #FEF3C7; color: #92400E; }
+
+  .ask-btn { width: 100%; margin-top: 1rem; padding: 10px; font-size: 13px; cursor: pointer; border-radius: 10px; border: 1px solid #ddd; background: white; color: #555; font-weight: 500; }
+  .ask-btn:hover { background: #f4f4f2; }
 </style>
 </head>
 <body>
+<div class="app">
 
-<div class="header">
-  <h1>2026 Estimated Tax Planner</h1>
-  <p>Roth Conversion · Quarterly Payments · Federal &amp; New Jersey</p>
-</div>
+  <div class="header">
+    <h1>Roth Conversion Forecaster <span style="font-size:13px; font-weight:400; color:#999;">(v2: T1 starts 2028 — current)</span></h1>
+  </div>
 
-<div class="layout">
-
-  <!-- SIDEBAR -->
-  <div class="sidebar">
-
-    <div class="section-label">2026 Income</div>
-    <div id="inp-annuity"></div>
-    <div id="inp-niit"></div>
-    <div id="inp-ss"></div>
-
-    <div class="sub-label">Dividends &amp; Interest by Quarter</div>
-    <div class="hint" id="div-hint">Enter actual received each period · Total: <strong>$0.00</strong></div>
-    <div id="inp-div-q1"></div>
-    <div id="inp-div-q2"></div>
-    <div id="inp-div-q3"></div>
-    <div id="inp-div-q4"></div>
-
-    <div class="sub-label">Long-Term Capital Gains by Quarter</div>
-    <div class="hint" id="ltcg-hint">Federal LTCG rates (0/15/20%) · NJ ordinary · Total: <strong>$0.00</strong></div>
-    <div id="inp-ltcg-q1"></div>
-    <div id="inp-ltcg-q2"></div>
-    <div id="inp-ltcg-q3"></div>
-    <div id="inp-ltcg-q4"></div>
-
-    <div class="sub-label">Short-Term Gains / Losses by Quarter</div>
-    <div class="hint" id="st-hint">Ordinary income rate · Negative = loss · Net: <strong>$0.00</strong></div>
-    <div id="inp-st-q1"></div>
-    <div id="inp-st-q2"></div>
-    <div id="inp-st-q3"></div>
-    <div id="inp-st-q4"></div>
-
-    <hr class="divider">
-    <div class="section-label">Roth Conversions by Quarter</div>
-    <div class="hint">Enter conversion amount in each quarter — leave $0 if none</div>
-    <div id="inp-conv-q1"></div>
-    <div id="inp-conv-q2"></div>
-    <div id="inp-conv-q3"></div>
-    <div id="inp-conv-q4"></div>
-    <div id="conv-summary"></div>
-
-    <hr class="divider">
-    <div class="section-label">OBBBA Senior Deduction (2025–2028)</div>
-    <div class="sub-label">Qualifying seniors age 65+</div>
-    <div class="senior-btns">
-      <button class="senior-btn" id="btn-s1" onclick="setSeniors(1)">1 Senior</button>
-      <button class="senior-btn active" id="btn-s2" onclick="setSeniors(2)">2 Seniors</button>
+  <p class="section-title">IRA Balances <span style="font-weight:400; color:#aaa; text-transform:none; letter-spacing:normal;">— update manually after checking Monarch</span></p>
+  <div class="balance-grid" style="margin-bottom:1.25rem;">
+    <div class="metric">
+      <div class="metric-label">Traditional IRA total</div>
+      <input type="text" id="trad-input" value="$1,741,131" inputmode="decimal"
+        style="font-size:22px; font-weight:600; color:#854F0B; border:none; background:transparent; width:100%; padding:0; font-family:inherit;"
+        oninput="onBalanceInput('trad', this)" onblur="formatBalanceInput(this)">
     </div>
-    <div id="obbba-info" class="info-green"></div>
-
-    <hr class="divider">
-    <div id="inp-prior-fed"></div>
-    <div id="inp-prior-nj"></div>
-    <div id="inp-withholding"></div>
-
-    <hr class="divider">
-    <div class="section-label">2026 Estimated Payments Made</div>
-    <div class="hint">Enter what you've actually paid each quarter</div>
-
-    <div class="sub-label">Federal</div>
-    <div id="inp-fed-paid-q1"></div>
-    <div id="inp-fed-paid-q2"></div>
-    <div id="inp-fed-paid-q3"></div>
-    <div id="inp-fed-paid-q4"></div>
-
-    <div class="sub-label" style="margin-top:8px">New Jersey</div>
-    <div id="inp-nj-paid-q1"></div>
-    <div id="inp-nj-paid-q2"></div>
-    <div id="inp-nj-paid-q3"></div>
-    <div id="inp-nj-paid-q4"></div>
-
-    <hr class="divider">
-    <div class="summary-grid" id="summary-tiles"></div>
-    <div id="nj-rie-alert"></div>
-    <div class="info-tan" style="margin-top:8px">
-      📊 LT gains taxed at federal LTCG rates (0/15/20%), ordinary in NJ. ST gains/losses are ordinary income both federal and NJ. ST losses offset LT gains before LTCG rates apply.
+    <div class="metric">
+      <div class="metric-label">Roth IRA total</div>
+      <input type="text" id="roth-input" value="$857,247" inputmode="decimal"
+        style="font-size:22px; font-weight:600; color:#0F6E56; border:none; background:transparent; width:100%; padding:0; font-family:inherit;"
+        oninput="onBalanceInput('roth', this)" onblur="formatBalanceInput(this)">
     </div>
   </div>
 
-  <!-- MAIN -->
-  <div class="main">
-    <div class="section-title">Quarterly Payments <span id="conv-quarters-note" style="font-weight:400;font-size:12px;color:#6b4f2e"></span></div>
-
-    <div id="balance-due-section"></div>
-
-    <div class="intro-text">
-      In quarters <strong>without</strong> a conversion, Annualized and Full Coverage payments are lower than Safe Harbor.
-      Conversion quarters catch up. Green = less than safe harbor · Red = more than safe harbor.
+  <p class="section-title">Outside Cash &amp; Brokerage <span style="font-weight:400; color:#aaa; text-transform:none; letter-spacing:normal;">— funds available to pay conversion taxes &amp; living costs</span></p>
+  <div class="balance-grid" style="margin-bottom:1.25rem; grid-template-columns: 1fr 1fr 1fr 1fr 1fr;">
+    <div class="metric">
+      <div class="metric-label">Starting outside cash</div>
+      <input type="text" id="cash-input" value="$527,387" inputmode="decimal"
+        style="font-size:18px; font-weight:600; color:#1a1a1a; border:none; background:transparent; width:100%; padding:0; font-family:inherit;"
+        oninput="onBalanceInput('cash', this)" onblur="formatBalanceInput(this)">
+      <div style="font-size:10px; color:#aaa; margin-top:2px;">HYSA + checking + liquid brokerage</div>
     </div>
-
-    <div class="card" id="sh-comparison-card"></div>
-
-    <div id="fed-table-wrap"></div>
-    <div id="nj-table-wrap"></div>
-
-    <div class="legend">
-      <div class="legend-title">How to read this</div>
-      <div><span style="color:#5a7a3a;font-weight:700">Safe Harbor</span> — 4 equal payments totaling 110% of your 2025 tax. No penalty risk. May over- or under-pay vs. actual.</div>
-      <div><span style="color:#3d6020;font-weight:700">Annualized Min</span> — minimum payments under IRS Schedule AI to avoid underpayment penalty. Low in non-conversion quarters. Q4 (Jan 15) includes the full remaining balance — nothing left at filing.</div>
-      <div><span style="color:#1a4a7a;font-weight:700">Full Coverage</span> — same timing but sized to pay your entire year's tax. Q4 covers everything — nothing due at filing.</div>
-      <div class="legend-note">
-        Federal safe harbor = lesser of 110% of 2025 tax OR 90% of 2026 tax. NJ = lesser of 100% of 2025 tax OR 80% of 2026 NJ tax. Annualized = IRS Schedule AI / NJ-2210 principles (22.5% factor). These are estimates — consult your CPA before making payments.
-      </div>
+    <div class="metric">
+      <div class="metric-label">Cash growth rate</div>
+      <input type="text" id="cash-growth-input" value="4" inputmode="decimal"
+        style="font-size:18px; font-weight:600; color:#1a1a1a; border:none; background:transparent; width:100%; padding:0; font-family:inherit;"
+        oninput="update()">
+      <div style="font-size:10px; color:#aaa; margin-top:2px;">% per year, e.g. HYSA/MMF yield</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Annual living expenses</div>
+      <input type="text" id="living-expenses-input" value="100000" inputmode="numeric"
+        style="font-size:18px; font-weight:600; color:#1a1a1a; border:none; background:transparent; width:100%; padding:0; font-family:inherit;"
+        oninput="update()">
+      <div style="font-size:10px; color:#aaa; margin-top:2px;">Held flat across the full projection</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Annual cash inflow</div>
+      <input type="text" id="cash-inflow-input" value="0" inputmode="numeric"
+        style="font-size:18px; font-weight:600; color:#1a1a1a; border:none; background:transparent; width:100%; padding:0; font-family:inherit;"
+        oninput="update()">
+      <div style="font-size:10px; color:#aaa; margin-top:2px;">e.g. savings, surplus from income</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">% of Fed conv. tax withheld from IRA</div>
+      <input type="range" min="0" max="100" step="5" value="0" id="tax-withhold-pct-input"
+        style="width:100%;" oninput="update()">
+      <div style="font-size:13px; font-weight:600; color:#1a1a1a;" id="tax-withhold-pct-val">0%</div>
+      <div style="font-size:10px; color:#aaa; margin-top:2px;">Rest of Fed tax + all NJ tax + NIIT still paid from cash</div>
     </div>
   </div>
+
+  <p class="section-title">HSA <span style="font-weight:400; color:#aaa; text-transform:none; letter-spacing:normal;">— covers medical expenses tax-free; using it removes the NJ medical deduction for that amount</span></p>
+  <div class="balance-grid" style="margin-bottom:1.25rem; grid-template-columns: 1fr 1fr 1fr;">
+    <div class="metric">
+      <div class="metric-label">Starting HSA balance</div>
+      <input type="text" id="hsa-input" value="$70,612" inputmode="decimal"
+        style="font-size:18px; font-weight:600; color:#1a1a1a; border:none; background:transparent; width:100%; padding:0; font-family:inherit;"
+        oninput="onBalanceInput('hsa', this)" onblur="formatBalanceInput(this)">
+      <div style="font-size:10px; color:#aaa; margin-top:2px;">Withdrawals for qualified medical expenses are tax-free</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">HSA growth rate</div>
+      <input type="text" id="hsa-growth-input" value="6" inputmode="decimal"
+        style="font-size:18px; font-weight:600; color:#1a1a1a; border:none; background:transparent; width:100%; padding:0; font-family:inherit;"
+        oninput="update()">
+      <div style="font-size:10px; color:#aaa; margin-top:2px;">% per year</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Use HSA for medical expenses?</div>
+      <select id="hsa-use-toggle" onchange="update()" style="font-size:13px; width:100%; padding:6px 4px; border:1px solid #ddd; border-radius:6px; background:white;">
+        <option value="yes">Yes — pay medical expenses from HSA until depleted</option>
+        <option value="no" selected>No — pay from cash, keep HSA growing untouched</option>
+      </select>
+    </div>
+  </div>
+
+  <p class="section-title">Assumptions</p>
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="input-row">
+      <span class="input-label">Conversion strategy</span>
+      <span style="flex:1"></span>
+      <select id="conv-strategy" onchange="update()">
+        <option value="bracket22">Fill 22% bracket (MAGI cap still applies)</option>
+        <option value="bracket24">Fill 24% bracket (MAGI cap still applies)</option>
+        <option value="irmaa_only" selected>Max conversion under each year's MAGI cap</option>
+        <option value="bracket22_irmaa">22% bracket AND under MAGI cap</option>
+        <option value="bracket24_irmaa">24% bracket AND under MAGI cap</option>
+        <option value="bracket22_nocap">Fill 22% bracket — IGNORE MAGI cap</option>
+        <option value="bracket24_nocap">Fill 24% bracket — IGNORE MAGI cap</option>
+        <option value="fixed">Fixed amount</option>
+      </select>
+    </div>
+    <div class="input-row" id="fixed-conv-row" style="display:none">
+      <span class="input-label">Fixed annual conversion</span>
+      <input type="range" min="20000" max="300000" step="5000" value="100000" id="conv-slider" oninput="update()">
+      <span class="input-val" id="conv-val">$100,000</span>
+    </div>
+    <div class="input-row">
+      <span class="input-label">Traditional IRA growth rate</span>
+      <input type="range" min="3" max="10" step="0.5" value="6.5" id="trad-growth-input" oninput="update()">
+      <span class="input-val" id="trad-growth-val">6.5%</span>
+    </div>
+    <div class="input-row">
+      <span class="input-label">Roth IRA growth rate</span>
+      <input type="range" min="3" max="10" step="0.5" value="6.5" id="roth-growth-input" oninput="update()">
+      <span class="input-val" id="roth-growth-val">6.5%</span>
+    </div>
+    <div class="input-row">
+      <span class="input-label">Realized capital gains &amp; dividends/interest</span>
+      <span style="flex:1; font-size:11px; color:#aaa; text-align:right;">Edit per-year in the table below ↓</span>
+    </div>
+    <div class="input-row">
+      <span class="input-label">Default capital gains (new years)</span>
+      <input type="range" min="0" max="100000" step="1000" value="10000" id="capgains-default" oninput="update()">
+      <span class="input-val" id="capgains-default-val">$10,000</span>
+    </div>
+    <div class="input-row">
+      <span class="input-label">Default dividends/interest (new years)</span>
+      <input type="range" min="0" max="100000" step="1000" value="15000" id="divint-default" oninput="update()">
+      <span class="input-val" id="divint-default-val">$15,000</span>
+    </div>
+    <div class="input-row">
+      <button type="button" class="ask-btn" style="margin-top:4px;" onclick="resetYearlyOverrides()">↺ Reset all years to flat $250K cap (clears graduated strategy)</button>
+    </div>
+    <div class="input-row">
+      <span class="input-label">Apply growth rate to gains/dividends?</span>
+      <span style="flex:1"></span>
+      <select id="invest-income-grows" onchange="update()">
+        <option value="flat" selected>No — hold flat across years</option>
+        <option value="grows">Yes — grow with portfolio growth rate</option>
+      </select>
+    </div>
+    <div class="input-row">
+      <span class="input-label">Filing status</span>
+      <span style="flex:1"></span>
+      <select id="filing-select" onchange="update()">
+        <option value="mfj" selected>Married filing jointly</option>
+        <option value="single">Single</option>
+      </select>
+    </div>
+    <div class="input-row">
+      <span class="input-label">Seniors age 65+ (OBBBA)</span>
+      <span style="flex:1"></span>
+      <select id="num-seniors-select" onchange="update()">
+        <option value="0">0</option>
+        <option value="1">1</option>
+        <option value="2" selected>2</option>
+      </select>
+    </div>
+    <div class="input-row">
+      <span class="input-label">Projection start year</span>
+      <input type="range" min="2026" max="2035" step="1" value="2026" id="start-year-input" oninput="update()">
+      <span class="input-val" id="start-year-val">2026</span>
+    </div>
+    <div class="input-row">
+      <span class="input-label">
+        Your age in 2026
+        <span style="font-size:11px; color:#aaa; font-weight:400; display:block;">Fixed reference point — RMD age (73) is calculated from this regardless of start year</span>
+      </span>
+      <input type="range" min="60" max="80" step="1" value="68" id="age-slider" oninput="update()">
+      <span class="input-val" id="age-val">Age 68</span>
+    </div>
+    <div class="input-row">
+      <span class="input-label">
+        Annuity swap scenario
+        <span style="font-size:11px; color:#aaa; font-weight:400; display:block;">Pause the $18K annuity for 2 years, then replace it with a higher-paying one</span>
+      </span>
+      <span style="flex:1"></span>
+      <select id="annuity-swap-enabled" onchange="update()">
+        <option value="off" selected>Off — keep current annuity as-is</option>
+        <option value="on">On — pause 2 years, then switch</option>
+      </select>
+    </div>
+    <div class="input-row" id="annuity-swap-details" style="display:none;">
+      <span class="input-label">Pause starts in year</span>
+      <select id="annuity-swap-start-year" onchange="update()">
+        <option value="2026">2026</option>
+        <option value="2027">2027</option>
+        <option value="2028">2028</option>
+        <option value="2029">2029</option>
+        <option value="2030">2030</option>
+      </select>
+      <span style="flex:0.3"></span>
+      <span class="input-label" style="flex:0.6;">Old annuity</span>
+      <input type="text" inputmode="numeric" value="18000" id="annuity-swap-old" style="width:70px; font-size:13px; padding:4px 6px; border:1px solid #ddd; border-radius:6px;" oninput="update()">
+      <span style="flex:0.3"></span>
+      <span class="input-label" style="flex:0.6;">New annuity</span>
+      <input type="text" inputmode="numeric" value="23000" id="annuity-swap-new" style="width:70px; font-size:13px; padding:4px 6px; border:1px solid #ddd; border-radius:6px;" oninput="update()">
+    </div>
+    <div class="input-row">
+      <span class="input-label">
+        MAGI cap (NJ Freeze / ANCHOR / IRMAA tiers)
+        <span style="font-size:11px; color:#aaa; font-weight:400; display:block;">Set per-year via the "MAGI Cap" dropdown in the table below. Default: ANCHOR $250K.</span>
+      </span>
+      <span style="flex:1"></span>
+    </div>
+    <div class="input-row">
+      <span class="input-label">
+        Conversion safety buffer
+        <span style="font-size:11px; color:#aaa; font-weight:400; display:block;">Stops conversions this much short of the MAGI cap, in case cap gains/dividends come in higher than estimated</span>
+      </span>
+      <input type="range" min="0" max="30000" step="1000" value="5000" id="conversion-buffer-input" oninput="update()">
+      <span class="input-val" id="conversion-buffer-val">$5,000</span>
+    </div>
+    <div class="input-row">
+      <span class="input-label">
+        IRMAA bracket growth
+        <span style="font-size:11px; color:#aaa; font-weight:400; display:block;">Yearly growth of IRMAA thresholds (2026 official +2.8%; 2027 projected +2.8% to +3.6%). Caps use the bracket 2 years ahead.</span>
+      </span>
+      <input type="range" min="0" max="6" step="0.1" value="3.5" id="irmaa-growth-input" oninput="update()">
+      <span class="input-val" id="irmaa-growth-val">3.5%</span>
+    </div>
+    <div class="input-row">
+      <span class="input-label">
+        Default unreimbursed medical expenses
+        <span style="font-size:11px; color:#aaa; font-weight:400; display:block;">NJ deducts the amount exceeding 2% of NJ gross income. Edit per-year in the table below.</span>
+      </span>
+      <input type="range" min="0" max="60000" step="1000" value="16000" id="medical-expenses-default" oninput="update()">
+      <span class="input-val" id="medical-expenses-default-val">$16,000</span>
+    </div>
+  </div>
+
+  <div style="font-size:12px; color:#888; margin-top:-0.75rem; margin-bottom:1.25rem; padding: 8px 12px; background:white; border:1px solid #e8e8e5; border-radius:10px;">
+    <strong style="color:#555;">Income schedule (auto-calculated):</strong>
+    2026: $31,200 annuity &nbsp;·&nbsp;
+    2027: +Vitaly SS $39,000 (10 mo) &nbsp;·&nbsp;
+    2028: +$46,800 full + Victoria SS $22,925 (5 mo) &nbsp;·&nbsp;
+    2029+: $133,020 SS+annuity total &nbsp;·&nbsp;
+    <em>85% of SS taxable federally; NJ exempts SS entirely. The "Income" column includes capital gains + dividends/interest for tax purposes, but cash inflow each year = annuity + Social Security + gross RMD only (cap gains/dividends are treated as staying invested, not spendable cash, though tax on them is still deducted from cash). NJ tax uses its own fixed (non-inflated) brackets, $4,000 total exemption ($2,000 base + $1,000/spouse for both being 65+), a deduction for unreimbursed medical expenses over 2% of NJ gross income, and taxes conversions as ordinary income. IRMAA surcharge is a real Medicare Part B+D premium add-on (both spouses on Medicare, so doubled) based on MAGI from 2 years earlier — e.g. 2026 MAGI affects 2028 cash flow, not 2026. The surcharge dollar amounts inflate at ~6%/yr (historical Medicare premium growth), separate from the ~2.8% CPI used for the MAGI tier thresholds. NIIT (3.8% federal) applies to the lesser of investment income or the amount MAGI exceeds $250K (fixed threshold, not inflation-indexed) — conversions and RMDs aren't NIIT income themselves but can trigger it by pushing MAGI over the line.</em>
+  </div>
+
+  <p class="section-title">Year 1 Summary</p>
+  <div class="summary-grid" id="summary-grid"></div>
+  <div id="irmaa-warn"></div>
+
+  <div class="card">
+    <div class="tab-row">
+      <button class="tab active" onclick="setTab('balances', this)">IRA balances</button>
+      <button class="tab" onclick="setTab('tax', this)">Tax cost</button>
+      <button class="tab" onclick="setTab('cash', this)">Cash flow</button>
+      <button class="tab" onclick="setTab('table', this)">Year-by-year</button>
+    </div>
+    <div id="panel-balances"><div class="chart-wrap"><canvas id="balChart"></canvas></div></div>
+    <div id="panel-tax" style="display:none"><div class="chart-wrap"><canvas id="taxChart"></canvas></div></div>
+    <div id="panel-cash" style="display:none"><div class="chart-wrap"><canvas id="cashChart"></canvas></div></div>
+    <div id="panel-table" style="display:none; overflow-x:auto;">
+      <table>
+        <thead><tr>
+          <th>Year</th><th>Age</th><th>Cap Gains</th><th>Div/Int</th><th>Medical Exp</th><th>HSA-Paid</th><th>NJ-Deductible Med</th><th>HSA Balance</th><th>Income</th><th>Conversion</th><th>RMD</th><th>Annuity Gap Wd</th><th>MAGI</th><th>MAGI Cap ✎<br><span style="font-weight:400;font-size:10px">(IRMAA: 2 yrs ahead)</span></th><th>Cap OK?</th><th>Fed Conv Tax</th><th>NJ Conv Tax</th><th>RMD Tax (Fed+NJ)</th><th>IRMAA Surcharge</th><th>NIIT</th><th>Total Fed Tax<br><span style="font-weight:400;font-size:10px">(incl. NIIT)</span></th><th>Total NJ Tax</th><th>Marg. Rate</th><th>Eff. Rate</th><th>Living Exp</th><th>Cash In</th><th>Cash Out</th><th>Net Cash Flow<br><span style="font-weight:400;font-size:10px">(In − Out)</span></th><th>Cash Balance</th><th>Trad IRA</th><th>Roth IRA</th><th>Total Assets</th>
+        </tr></thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <button class="ask-btn" onclick="askClaude()">✦ Ask Claude about this projection ↗</button>
 </div>
 
 <script>
-// ===== TAX CONSTANTS =====
-const FED_BRACKETS = [
-  { min: 0,       max: 23850,    rate: 0.10 },
-  { min: 23850,   max: 96950,    rate: 0.12 },
-  { min: 96950,   max: 206700,   rate: 0.22 },
-  { min: 206700,  max: 394600,   rate: 0.24 },
-  { min: 394600,  max: 501050,   rate: 0.32 },
-  { min: 501050,  max: 751600,   rate: 0.35 },
-  { min: 751600,  max: Infinity, rate: 0.37 },
-];
-const FED_STD_MFJ = 35500;
-const OBBBA_PER_PERSON = 6000;
-const OBBBA_PHASEOUT_START = 150000;
-const OBBBA_PHASEOUT_RATE  = 0.06;
+const $ = id => document.getElementById(id);
+const fmt = n => '$' + Math.round(n).toLocaleString();
+const fmtK = n => '$' + (Math.round(n/1000)).toLocaleString() + 'K';
 
-const LTCG_BRACKETS = [
-  { min: 0,       max: 96700,    rate: 0.00 },
-  { min: 96700,   max: 600050,   rate: 0.15 },
-  { min: 600050,  max: Infinity, rate: 0.20 },
-];
+let balChart, taxChart, cashChart;
+let STATE = { tradIRA: 1741131, rothIRA: 857247, outsideCash: 527387, hsaBalance: 70612 };
 
-const NJ_BRACKETS = [
-  { min: 0,       max: 20000,    rate: 0.01400 },
-  { min: 20000,   max: 50000,    rate: 0.01750 },
-  { min: 50000,   max: 70000,    rate: 0.02450 },
-  { min: 70000,   max: 80000,    rate: 0.03500 },
-  { min: 80000,   max: 150000,   rate: 0.05525 },
-  { min: 150000,  max: 500000,   rate: 0.06370 },
-  { min: 500000,  max: Infinity, rate: 0.08970 },
-];
-const NJ_EXEMPTION  = 4000;
-const NJ_RIE_MAX    = 100000;
-const NJ_RIE_CLIFF  = 150000;
-const NIIT_THRESHOLD = 250000;
-const NIIT_RATE      = 0.038;
-
-const PERIODS = [
-  { label:"Q1", range:"Jan–Mar", months:3,  factor:4.0,  due:"Apr 15, 2026",  wFrac:3/12  },
-  { label:"Q2", range:"Apr–May", months:5,  factor:2.4,  due:"Jun 16, 2026",  wFrac:5/12  },
-  { label:"Q3", range:"Jun–Aug", months:8,  factor:1.5,  due:"Sep 15, 2026",  wFrac:8/12  },
-  { label:"Q4", range:"Sep–Dec", months:12, factor:1.0,  due:"Jan 15, 2027",  wFrac:12/12 },
-];
-const ANN_FRACS = [0.225, 0.45, 0.675, 0.90];
-
-// ===== STATE =====
-const S = {
-  annuity:    31195,
-  niit:       18324,
-  ss:         0,
-  divByQ:     [0, 0, 0, 0],
-  ltcgByQ:    [0, 0, 0, 0],
-  stByQ:      [0, 0, 0, 0],
-  convByQ:    [0, 0, 0, 0],
-  priorFed:   34421,
-  priorNJ:    9146,
-  withholding:0,
-  numSeniors: 2,
-  fedPaid:    [0, 0, 0, 0],
-  njPaid:     [0, 0, 0, 0],
+// Per-year overrides for capital gains, dividends/interest, medical expenses,
+// and MAGI cap selection, keyed by year. If a year has no entry for a given
+// field, the corresponding default slider value is used instead.
+// Structure: { 2026: { capGains: 10000, divInt: 15000, capType: 'nj250' }, ... }
+//
+// Graduated MAGI cap strategy: starts at ANCHOR $250K for 2026-2027 (cheap
+// conversion room, low tax cost while rates are favorable), then escalates to
+// IRMAA Tier 1 starting 2028 — tested against later escalation (e.g. 2032) and
+// against staying at lower tiers permanently; escalating early wins because
+// RMDs will force MAGI up regardless of what cap is chosen, so converting more
+// now while rates are still favorable beats deferring and taking the RMD hit
+// later with less already converted. See chat history for the comparison run.
+// Edit any year directly in the table's "MAGI Cap" dropdown to override.
+let YEARLY_OVERRIDES = {
+  2026: { capType: 'nj250' },
+  2027: { capType: 'nj250' },
+  2028: { capType: 'irmaa1' },
+  2029: { capType: 'irmaa1' },
+  2030: { capType: 'irmaa1' },
+  2031: { capType: 'irmaa1' },
+  2032: { capType: 'irmaa1' },
+  2033: { capType: 'irmaa1' },
+  2034: { capType: 'irmaa1' },
+  2035: { capType: 'irmaa1' },
+  2036: { capType: 'irmaa1' },
+  2037: { capType: 'irmaa1' },
+  2038: { capType: 'irmaa1' },
+  2039: { capType: 'irmaa1' },
+  2040: { capType: 'irmaa1' },
 };
 
-// ===== TAX FUNCTIONS =====
-function calcTax(income, brackets) {
-  let tax = 0;
-  for (const b of brackets) {
-    if (income <= b.min) break;
-    tax += (Math.min(income, b.max) - b.min) * b.rate;
-  }
-  return Math.max(0, tax);
-}
-
-function obbbaDed(magi, numSeniors) {
-  const pp = Math.max(0, OBBBA_PER_PERSON - OBBBA_PHASEOUT_RATE * Math.max(0, magi - OBBBA_PHASEOUT_START));
-  return pp * numSeniors;
-}
-
-function calcFedTax(ordIncome, ltcgIncome, magi, numSeniors) {
-  const obbba = obbbaDed(magi, numSeniors);
-  const ordTaxable = Math.max(0, ordIncome - FED_STD_MFJ - obbba);
-  const ordTax  = calcTax(ordTaxable, FED_BRACKETS);
-  const ltcgTax = calcTax(ordTaxable + ltcgIncome, LTCG_BRACKETS) - calcTax(ordTaxable, LTCG_BRACKETS);
-  return ordTax + Math.max(0, ltcgTax);
-}
-
-function calcNIIT(magi, nii) {
-  if (magi <= NIIT_THRESHOLD) return 0;
-  return Math.max(0, Math.min(nii, magi - NIIT_THRESHOLD)) * NIIT_RATE;
-}
-
-function njRIEFraction(totalIncome) {
-  if (totalIncome < 100000) return 1.00;
-  if (totalIncome < 125000) return 0.50;
-  if (totalIncome < 150000) return 0.25;
-  return 0;
-}
-
-function calcNJTax(totalNJIncome, annuityIncome) {
-  const rieFrac = njRIEFraction(totalNJIncome);
-  const rie     = Math.min(annuityIncome, NJ_RIE_MAX) * rieFrac;
-  const taxable = Math.max(0, totalNJIncome - rie - NJ_EXEMPTION);
-  return calcTax(taxable, NJ_BRACKETS);
-}
-
-function cumArr(arr) {
-  return arr.map((_, i) => arr.slice(0, i + 1).reduce((s, v) => s + v, 0));
-}
-
-function calcAll() {
-  const { annuity, niit: niitAnnuity, ss, divByQ, ltcgByQ, stByQ, convByQ: conversions,
-          priorFed, priorNJ, withholding, numSeniors, fedPaid, njPaid } = S;
-
-  const ssTaxable = ss * 0.85;
-  const totalDiv  = divByQ.reduce((s,v)=>s+v,0);
-  const totalLTCG = ltcgByQ.reduce((s,v)=>s+v,0);
-  const totalST   = stByQ.reduce((s,v)=>s+v,0);
-  const totalConv = conversions.reduce((s,v)=>s+v,0);
-
-  const convCum = cumArr(conversions);
-  const divCum  = cumArr(divByQ);
-  const ltcgCum = cumArr(ltcgByQ);
-  const stCum   = cumArr(stByQ);
-
-  const regOrdFed   = annuity + totalDiv + ssTaxable + Math.max(0, totalST);
-  const totalOrdFed = regOrdFed + totalConv;
-  const netLTCG     = Math.max(0, totalLTCG + Math.min(0, totalST));
-  const regMAGI     = regOrdFed + netLTCG;
-  const totalMAGI   = totalOrdFed + netLTCG;
-
-  const fullFedTax = calcFedTax(totalOrdFed, netLTCG, totalMAGI, numSeniors)
-                   + calcNIIT(totalMAGI, niitAnnuity + totalDiv + netLTCG);
-  const regFedTax  = calcFedTax(regOrdFed, netLTCG, regMAGI, numSeniors)
-                   + calcNIIT(regMAGI, niitAnnuity + totalDiv + netLTCG);
-
-  const obbbaFull = obbbaDed(totalMAGI, numSeniors);
-  const obbbaReg  = obbbaDed(regMAGI, numSeniors);
-
-  const totalNJGains = totalLTCG + totalST;
-  const regNJInc     = annuity + totalDiv + totalNJGains;
-  const totalNJInc   = regNJInc + totalConv;
-
-  const fullNJTax = calcNJTax(totalNJInc, annuity);
-  const regNJTax  = calcNJTax(regNJInc,   annuity);
-  const njCliff   = regNJInc < NJ_RIE_CLIFF && totalNJInc >= NJ_RIE_CLIFF;
-
-  const rieFracFull   = njRIEFraction(totalNJInc);
-  const rieApplied    = Math.min(annuity, NJ_RIE_MAX) * rieFracFull;
-  const riePct        = Math.round(rieFracFull * 100);
-
-  // Safe Harbor
-  const fedSH_priorYr = priorFed * 1.10;
-  const fedSH_currYr  = fullFedTax * 0.90;
-  const fedSHTot      = Math.min(fedSH_priorYr, fedSH_currYr);
-  const fedSHMethod   = fedSH_currYr < fedSH_priorYr ? "90% of 2026 tax" : "110% of 2025 tax";
-  const njSH_priorYr  = priorNJ * 1.00;
-  const njSH_currYr   = fullNJTax * 0.80;
-  const njSHTot       = Math.min(njSH_priorYr, njSH_currYr);
-  const njSHMethod    = njSH_currYr < njSH_priorYr ? "80% of 2026 NJ tax" : "100% of 2025 NJ tax";
-
-  const fedSH110Q        = Math.max(0, priorFed * 1.10 - withholding) / 4;
-  const njSH110Q         = priorNJ * 1.00 / 4;
-  const fedSH110Q4       = Math.max(0, fullFedTax - withholding - fedSH110Q * 3);
-  const njSH110Q4        = Math.max(0, fullNJTax  - njSH110Q * 3);
-  const fedSH110Payments = [fedSH110Q, fedSH110Q, fedSH110Q, fedSH110Q4];
-  const njSH110Payments  = [njSH110Q,  njSH110Q,  njSH110Q,  njSH110Q4];
-
-  // Annualized Minimum
-  const annCumFed = PERIODS.map((p, i) => {
-    const annuityYTD = annuity * (p.months / 12);
-    const ssYTD      = ssTaxable * (p.months / 12);
-    const ytdST      = stCum[i];
-    const ytdOrd     = annuityYTD + ssYTD + divCum[i] + Math.max(0, ytdST) + convCum[i];
-    const ytdNetLTCG = Math.max(0, ltcgCum[i] + Math.min(0, ytdST));
-    const annOrd     = ytdOrd * p.factor;
-    const annLTCG    = ytdNetLTCG * p.factor;
-    const annDiv     = divCum[i] * p.factor;
-    const annNIITAnn = niitAnnuity * (p.months / 12) * p.factor;
-    const annMAGI    = annOrd + annLTCG;
-    const annTax     = calcFedTax(annOrd, annLTCG, annMAGI, numSeniors)
-                     + calcNIIT(annMAGI, annNIITAnn + annDiv + annLTCG);
-    return Math.max(0, annTax * ANN_FRACS[i] - withholding * p.wFrac);
-  });
-  const annCumNJ = PERIODS.map((p, i) => {
-    const annuityYTD = annuity * (p.months / 12);
-    const ytdNJGains = ltcgCum[i] + stCum[i];
-    const ytdNJ      = annuityYTD + divCum[i] + ytdNJGains + convCum[i];
-    const annNJInc   = ytdNJ * p.factor;
-    const annAnnuity = annuityYTD * p.factor;
-    return Math.max(0, calcNJTax(annNJInc, annAnnuity) * ANN_FRACS[i]);
-  });
-  const annPayFed = annCumFed.map((c, i) => Math.max(0, c - (i > 0 ? annCumFed[i-1] : 0)));
-  const annPayNJ  = annCumNJ.map((c, i)  => Math.max(0, c - (i > 0 ? annCumNJ[i-1]  : 0)));
-  const annBalFed = Math.max(0, fullFedTax - withholding - annPayFed.reduce((s,v)=>s+v,0));
-  const annBalNJ  = Math.max(0, fullNJTax  - annPayNJ.reduce((s,v)=>s+v,0));
-  const annPayFedAdj = annPayFed.map((v, i) => i === 3 ? v + annBalFed : v);
-  const annPayNJAdj  = annPayNJ.map((v, i)  => i === 3 ? v + annBalNJ  : v);
-
-  // Full Coverage
-  const fcCumFed = PERIODS.map((p, i) => {
-    const annuityYTD = annuity * (p.months / 12);
-    const ssYTD      = ssTaxable * (p.months / 12);
-    const ytdST      = stCum[i];
-    const ytdOrd     = annuityYTD + ssYTD + divCum[i] + Math.max(0, ytdST) + convCum[i];
-    const ytdNetLTCG = Math.max(0, ltcgCum[i] + Math.min(0, ytdST));
-    const ytdMAGI    = ytdOrd + ytdNetLTCG;
-    const ytdNIITAnn = niitAnnuity * (p.months / 12);
-    return calcFedTax(ytdOrd, ytdNetLTCG, ytdMAGI, numSeniors)
-         + calcNIIT(ytdMAGI, ytdNIITAnn + divCum[i] + ytdNetLTCG);
-  });
-  const fcCumNJ = PERIODS.map((p, i) => {
-    const annuityYTD = annuity * (p.months / 12);
-    const ytdNJGains = ltcgCum[i] + stCum[i];
-    const ytdNJ      = annuityYTD + divCum[i] + ytdNJGains + convCum[i];
-    return calcNJTax(ytdNJ, annuityYTD);
-  });
-  const fcPayFed = fcCumFed.map((c, i) => {
-    const wPrev = withholding * (i > 0 ? PERIODS[i-1].wFrac : 0);
-    const wCurr = withholding * PERIODS[i].wFrac;
-    return Math.max(0, c - (i > 0 ? fcCumFed[i-1] : 0) - (wCurr - wPrev));
-  });
-  const fcPayNJ  = fcCumNJ.map((c, i) => Math.max(0, c - (i > 0 ? fcCumNJ[i-1] : 0)));
-  const fcBalFed = Math.max(0, fullFedTax - withholding - fcPayFed.reduce((s,v)=>s+v,0));
-  const fcBalNJ  = Math.max(0, fullNJTax  - fcPayNJ.reduce((s,v)=>s+v,0));
-  const fcPayFedAdj = fcPayFed.map((v, i) => i === 3 ? v + fcBalFed : v);
-  const fcPayNJAdj  = fcPayNJ.map((v, i)  => i === 3 ? v + fcBalNJ  : v);
-
-  const fedPaidTotal  = fedPaid.reduce((s,v)=>s+v,0);
-  const njPaidTotal   = njPaid.reduce((s,v)=>s+v,0);
-  const fedBalanceDue = fullFedTax - withholding - fedPaidTotal;
-  const njBalanceDue  = fullNJTax  - njPaidTotal;
-
-  return {
-    totalMAGI, totalNJInc, fullFedTax, fullNJTax, njCliff,
-    rieApplied, riePct, obbbaFull, obbbaReg,
-    fedSH_priorYr, fedSH_currYr, njSH_priorYr, njSH_currYr,
-    fedSHTot, njSHTot, fedSHMethod, njSHMethod,
-    fedSH110Payments, njSH110Payments,
-    annPayFed: annPayFedAdj, annPayNJ: annPayNJAdj,
-    annTotFed: annPayFedAdj.reduce((s,v)=>s+v,0),
-    annTotNJ:  annPayNJAdj.reduce((s,v)=>s+v,0),
-    fcPayFed: fcPayFedAdj, fcPayNJ: fcPayNJAdj,
-    fcTotFed: fcPayFedAdj.reduce((s,v)=>s+v,0),
-    fcTotNJ:  fcPayNJAdj.reduce((s,v)=>s+v,0),
-    fedPaidTotal, njPaidTotal, fedBalanceDue, njBalanceDue,
-    totalConv, totalDiv: divByQ.reduce((s,v)=>s+v,0),
-    totalLTCG, totalST,
-  };
-}
-
-// ===== FORMATTING =====
-function fmt(n) {
-  const abs = Math.abs(n);
-  const str = abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return n < 0 ? `($${str})` : `$${str}`;
-}
-
-// ===== INPUT COMPONENT =====
-function makeInput(containerId, label, key, idx, note, allowNeg) {
-  const el = document.getElementById(containerId);
-  el.innerHTML = `
-    <div class="num-input-wrap">
-      <label><span class="lbl">${label}</span>${note ? `<span class="note">${note}</span>` : ''}</label>
-      <div class="input-row" id="row-${containerId}">
-        <span class="prefix">$</span>
-        <input type="text" inputmode="decimal" id="input-${containerId}" autocomplete="off">
-      </div>
-    </div>`;
-  const input = document.getElementById(`input-${containerId}`);
-  const row   = document.getElementById(`row-${containerId}`);
-
-  function getVal() {
-    if (idx !== undefined) return S[key][idx];
-    return S[key];
-  }
-  function setVal(v) {
-    if (idx !== undefined) S[key] = S[key].map((x, i) => i === idx ? v : x);
-    else S[key] = v;
-  }
-
-  function formatDisplay(v) {
-    if (v === 0) return "0.00";
-    const abs = Math.abs(v);
-    const str = abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return v < 0 ? `-${str}` : str;
-  }
-
-  function refresh() {
-    const v = getVal();
-    input.value = formatDisplay(v);
-    if (v < 0) row.classList.add('negative'); else row.classList.remove('negative');
-  }
-  refresh();
-
-  input.addEventListener('focus', () => {
-    const v = getVal();
-    input.value = v === 0 ? '' : String(v);
-    input.select();
-  });
-  input.addEventListener('input', () => {
-    let cleaned = input.value;
-    cleaned = allowNeg ? cleaned.replace(/[^0-9.\-]/g, '') : cleaned.replace(/[^0-9.]/g, '');
-    if (allowNeg) cleaned = cleaned.replace(/(?!^)-/g, '');
-    const parts = cleaned.split('.');
-    if (parts.length > 2) cleaned = parts[0] + '.' + parts.slice(1).join('');
-    if (parts[1] !== undefined && parts[1].length > 2) cleaned = parts[0] + '.' + parts[1].slice(0,2);
-    input.value = cleaned;
-    const num = parseFloat(cleaned);
-    setVal(isNaN(num) ? 0 : num);
-    update();
-  });
-  input.addEventListener('blur', () => refresh());
-
-  return refresh;
-}
-
-// ===== SENIOR TOGGLE =====
-function setSeniors(n) {
-  S.numSeniors = n;
-  document.getElementById('btn-s1').className = 'senior-btn' + (n === 1 ? ' active' : '');
-  document.getElementById('btn-s2').className = 'senior-btn' + (n === 2 ? ' active' : '');
+function resetYearlyOverrides() {
+  YEARLY_OVERRIDES = {};
   update();
 }
 
-// ===== RENDER =====
-function update() {
-  const r = calcAll();
-  const { totalConv, totalDiv, totalLTCG, totalST } = r;
-  const convQs = S.convByQ.map(v => v > 0);
-
-  // Hints
-  document.getElementById('div-hint').innerHTML  = `Enter actual received each period · Total: <strong>${fmt(totalDiv)}</strong>`;
-  document.getElementById('ltcg-hint').innerHTML = `Federal LTCG rates (0/15/20%) · NJ ordinary · Total: <strong>${fmt(totalLTCG)}</strong>`;
-  const stColor = totalST < 0 ? '#3d6020' : '#2d1f0e';
-  document.getElementById('st-hint').innerHTML   = `Ordinary income rate · Negative = loss · Net: <strong style="color:${stColor}">${fmt(totalST)}</strong>`;
-
-  // Conv summary
-  const convSummary = document.getElementById('conv-summary');
-  if (totalConv > 0) {
-    const qCount = S.convByQ.filter(v => v > 0).length;
-    convSummary.innerHTML = `<div class="info-tan" style="margin-bottom:4px">Total conversion: <strong style="color:#2d1f0e">${fmt(totalConv)}</strong>${qCount > 1 ? ` <span style="color:#c07830;font-weight:700">· ${qCount} quarters</span>` : ''}</div>`;
-  } else {
-    convSummary.innerHTML = '';
-  }
-
-  // Conv quarters note
-  const convNote = document.getElementById('conv-quarters-note');
-  const convLabels = PERIODS.filter((_,i) => convQs[i]).map(p => p.label).join(', ');
-  convNote.textContent = totalConv > 0 ? `— Conversions: ${convLabels}` : '';
-
-  // OBBBA info
-  const obbba = r.obbbaFull;
-  let obbbaHtml = `<div style="font-weight:700;margin-bottom:3px">OBBBA deduction: ${fmt(obbba)}</div>
-    <div style="opacity:0.85">Std deduction: $35,500 · OBBBA: ${fmt(obbba)} · Total: ${fmt(35500 + obbba)}</div>`;
-  if (obbba > 0 && obbba < S.numSeniors * 6000) {
-    obbbaHtml += `<div style="margin-top:3px;color:#8B6914;font-weight:600">⚠ Partially phased out (MAGI ${fmt(r.totalMAGI)} &gt; $150K)</div>`;
-  }
-  if (obbba === 0) {
-    obbbaHtml += `<div style="margin-top:3px;color:#a02010;font-weight:600">✗ Fully phased out (MAGI &gt; $250K)</div>`;
-  }
-  document.getElementById('obbba-info').innerHTML = obbbaHtml;
-
-  // Summary tiles
-  const tiles = [['Fed AGI', r.totalMAGI], ['NJ Income', r.totalNJInc], ['Full Fed Tax', r.fullFedTax], ['Full NJ Tax', r.fullNJTax]];
-  document.getElementById('summary-tiles').innerHTML = tiles.map(([lbl, val]) =>
-    `<div class="summary-tile"><div class="tile-lbl">${lbl}</div><div class="tile-val">${fmt(val)}</div></div>`
-  ).join('');
-
-  // NJ RIE alert
-  const rieEl = document.getElementById('nj-rie-alert');
-  if (r.njCliff) {
-    rieEl.innerHTML = `<div class="info-yellow">⚠ <strong>NJ RIE lost:</strong> Conversion pushes NJ income over $150K — full exclusion eliminated. Consider sizing conversion to stay below $150K (full), $125K (25% excl.), or $100K (50% excl.).</div>`;
-  } else if (r.rieApplied > 0) {
-    const zone = r.totalNJInc > 100000 && r.totalNJInc < 150000 ? ' Income in phase-out zone ($100K–$150K).' : '';
-    rieEl.innerHTML = `<div class="info-green" style="margin-top:12px">✓ <strong>NJ RIE (${r.riePct}% tier):</strong> ${fmt(r.rieApplied)} excluded from NJ tax.${zone}</div>`;
-  } else if (S.annuity > 0) {
-    rieEl.innerHTML = `<div class="info-yellow">⚠ <strong>NJ RIE = $0:</strong> NJ income over $150K — no exclusion applies.</div>`;
-  } else {
-    rieEl.innerHTML = '';
-  }
-
-  // Balance due section
-  const balEl = document.getElementById('balance-due-section');
-  const hasPaid = r.fedPaidTotal > 0 || r.njPaidTotal > 0;
-  if (hasPaid) {
-    balEl.innerHTML = `<div class="card">
-      <div class="card-title">Year-End Balance — Based on Payments Made</div>
-      <div class="balance-grid">
-        ${[
-          { label:'Federal',     fullTax:r.fullFedTax, withh:S.withholding, paid:r.fedPaidTotal, balance:r.fedBalanceDue },
-          { label:'New Jersey',  fullTax:r.fullNJTax,  withh:0,             paid:r.njPaidTotal,  balance:r.njBalanceDue  },
-        ].map(({label,fullTax,withh,paid,balance}) => {
-          const isRefund = balance < 0;
-          const isEven   = Math.abs(balance) < 50;
-          const bg  = isEven ? '#f0f8e8' : isRefund ? '#e8f0ff' : balance > 5000 ? '#fff0f0' : '#fff8e8';
-          const bd  = isEven ? '#a0c870' : isRefund ? '#7090d0' : balance > 5000 ? '#d07060' : '#d0b060';
-          const tx  = isEven ? '#3d6020' : isRefund ? '#1a3a7a' : balance > 5000 ? '#a02010' : '#7a5c00';
-          const statusText = isEven ? '✓ Even' : isRefund ? '⬇ Refund' : '⬆ Still owed';
-          const amtText    = isRefund ? `(${fmt(-balance)})` : fmt(balance);
-          return `<div class="balance-card" style="background:${bg};border:1px solid ${bd}">
-            <div class="bc-title">${label}</div>
-            <div class="balance-row"><span class="bc-lbl">Full year tax</span><span class="bc-val">${fmt(fullTax)}</span></div>
-            ${withh > 0 ? `<div class="balance-row"><span class="bc-lbl">Withholding</span><span class="bc-val green">− ${fmt(withh)}</span></div>` : ''}
-            <div class="balance-row"><span class="bc-lbl">Payments made</span><span class="bc-val green">− ${fmt(paid)}</span></div>
-            <div class="balance-divider" style="border-color:${bd}">
-              <span class="bc-status" style="color:${tx}">${statusText}</span>
-              <span class="bc-amount" style="color:${tx}">${amtText}</span>
-            </div>
-          </div>`;
-        }).join('')}
-      </div>
-      <div class="balance-note">Updates live as you adjust income and conversion amounts above.</div>
-    </div>`;
-  } else {
-    balEl.innerHTML = '';
-  }
-
-  // Safe harbor comparison
-  document.getElementById('sh-comparison-card').innerHTML = `
-    <div class="card-title">Safe Harbor — which test applies?</div>
-    <div class="sh-grid">
-      ${[
-        ['Federal: 110% of 2025 tax', fmt(r.fedSH_priorYr), 'prior year', r.fedSH_priorYr <= r.fedSH_currYr],
-        ['Federal: 90% of 2026 tax',  fmt(r.fedSH_currYr),  'current year', r.fedSH_currYr < r.fedSH_priorYr],
-        ['NJ: 100% of 2025 tax',      fmt(r.njSH_priorYr),  'prior year', r.njSH_priorYr <= r.njSH_currYr],
-        ['NJ: 80% of 2026 NJ tax',    fmt(r.njSH_currYr),   'current year', r.njSH_currYr < r.njSH_priorYr],
-      ].map(([lbl, val, tag, winner]) =>
-        `<div class="sh-card${winner ? ' winner' : ''}">
-          <div class="sh-lbl">${lbl}${winner ? ' ✓ USE THIS' : ''}</div>
-          <div class="sh-val">${val}</div>
-          <div class="sh-tag">${tag}</div>
-        </div>`
-      ).join('')}
-    </div>
-    <div class="sh-footer">You use whichever is <strong>lower</strong>. Currently using: <strong style="color:#8B6914">Federal: ${r.fedSHMethod} · NJ: ${r.njSHMethod}</strong></div>`;
-
-  // Tables
-  renderQTable('fed-table-wrap', 'Federal',     r.fedSH110Payments, r.annPayFed, r.fcPayFed,
-    r.fedSH110Payments.reduce((s,v)=>s+v,0), r.annTotFed, r.fcTotFed,
-    convQs, S.fedPaid, S.withholding, 'SH 110% Prior Year');
-  renderQTable('nj-table-wrap',  'New Jersey',  r.njSH110Payments,  r.annPayNJ,  r.fcPayNJ,
-    r.njSH110Payments.reduce((s,v)=>s+v,0),  r.annTotNJ,  r.fcTotNJ,
-    convQs, S.njPaid,  0,             'SH 100% Prior Year');
+function setYearlyOverride(year, field, value) {
+  // capType is a string key ('nj200', 'irmaa0', etc.); all other fields are numeric
+  const val = field === 'capType'
+    ? String(value)
+    : (typeof value === 'number' ? value : (parseInt(String(value).replace(/[^0-9]/g, '')) || 0));
+  if (!YEARLY_OVERRIDES[year]) YEARLY_OVERRIDES[year] = {};
+  YEARLY_OVERRIDES[year][field] = val;
+  update();
 }
 
-const COL_COLORS = ['#5a7a3a', '#3d6020', '#1a4a7a'];
-const COL_SUBS   = ['flat Q1–Q3 · true-up Q4', 'schedule AI · low Q1–Q3', 'pays full year tax'];
+const BRACKETS_MFJ = [
+  // 2026 MFJ brackets (Rev. Proc. 2025-32); inflated by CPI for later years
+  {rate:0.10,top:24800},{rate:0.12,top:100800},{rate:0.22,top:211400},
+  {rate:0.24,top:403550},{rate:0.32,top:512450},{rate:0.35,top:768700},{rate:0.37,top:Infinity}
+];
+const BRACKETS_SINGLE = [
+  {rate:0.10,top:11925},{rate:0.12,top:48475},{rate:0.22,top:103350},
+  {rate:0.24,top:197300},{rate:0.32,top:250525},{rate:0.35,top:375800},{rate:0.37,top:Infinity}
+];
+const STD_DED = {mfj:35500,single:17750}; // OBBBA 2026 standard deduction
+// OBBBA senior deduction (2025-2028): $6,000/person, phases out 6%/$ over $150K MAGI (MFJ)
+const OBBBA_PER_PERSON = 6000;
+const OBBBA_PHASEOUT_MFJ = 150000;
+const OBBBA_PHASEOUT_RATE = 0.06;
+const OBBBA_LAST_YEAR = 2028; // deduction applies to tax years 2025-2028 only
+function obbbaDed(magi, numSeniors, year) {
+  if (year > OBBBA_LAST_YEAR) return 0;
+  const perPerson = Math.max(0, OBBBA_PER_PERSON - OBBBA_PHASEOUT_RATE * Math.max(0, magi - OBBBA_PHASEOUT_MFJ));
+  return perPerson * (numSeniors || 0);
+}
+const RMD_TABLE = {73:26.5,74:25.5,75:24.6,76:23.7,77:22.9,78:22.0,79:21.1,80:20.2,81:19.4,82:18.5,83:17.7,84:16.8,85:16.0,86:15.2,87:14.4,88:13.7,89:12.9,90:12.2,91:11.5,92:10.8,93:10.1,94:9.5,95:8.9,96:8.4};
 
-function renderQTable(containerId, title, sh110, ann, fc, tot1, tot2, tot3, convQs, paid, withh, shLabel) {
-  const cols    = [shLabel, 'Annualized Min', 'Full Coverage'];
-  const totals  = [tot1, tot2, tot3];
-  const payments = [sh110, ann, fc];
-  const paidTotal = paid.reduce((s,v)=>s+v,0);
-  const hasPaid   = paidTotal > 0;
+// ===== NEW JERSEY STATE TAX =====
+// NJ brackets are statutory and NOT inflation-indexed — they stay fixed across the full projection.
+// NJ has no standard deduction, only a personal exemption ($1,000/person, $2,000 for MFJ).
+// NJ fully exempts Social Security from state tax, regardless of income level.
+// NJ taxes capital gains as ordinary income (no preferential rate like federal).
+// NJ taxes IRA/Roth conversion distributions as ordinary income (per user confirmation —
+// not excluded as basis recovery in this model).
+const NJ_BRACKETS_MFJ = [
+  {rate:0.014, top:20000}, {rate:0.0175, top:50000}, {rate:0.0245, top:70000},
+  {rate:0.035, top:80000}, {rate:0.05525, top:150000}, {rate:0.0637, top:500000},
+  {rate:0.0897, top:1000000}, {rate:0.1075, top:Infinity}
+];
+const NJ_BRACKETS_SINGLE = [
+  {rate:0.014, top:20000}, {rate:0.0175, top:35000}, {rate:0.035, top:40000},
+  {rate:0.05525, top:75000}, {rate:0.0637, top:500000}, {rate:0.0897, top:1000000},
+  {rate:0.1075, top:Infinity}
+];
+const NJ_PERSONAL_EXEMPTION = {mfj:2000, single:1000};
 
-  let html = `<div class="qtable-title">${title}</div><div class="qtable-wrap"><table>
-    <thead><tr>
-      <th class="period-col">Period</th>
-      <th class="due-col">Due</th>
-      ${cols.map((c,ci) => `<th style="text-align:right;padding:10px 14px;background:${COL_COLORS[ci]};color:white;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase">
-        ${c}<br><span style="font-weight:400;font-size:10px;opacity:0.85">${COL_SUBS[ci]}</span></th>`).join('')}
-    </tr></thead><tbody>`;
+// ===== NET INVESTMENT INCOME TAX (NIIT) =====
+// 3.8% federal tax on the LESSER of: (a) net investment income, or (b) the
+// amount MAGI exceeds the threshold. Threshold is $250,000 MFJ / $200,000
+// single — fixed by statute since 2013, NOT inflation-indexed.
+// Roth conversions and IRA/RMD distributions are NOT investment income and
+// are NOT directly subject to NIIT — but they DO count toward MAGI for
+// determining whether the threshold is crossed, which can trigger NIIT on
+// otherwise-untaxed capital gains/dividends that would fall under the
+// threshold on their own.
+const NIIT_RATE = 0.038;
+const NIIT_THRESHOLD = {mfj: 250000, single: 200000};
 
-  PERIODS.forEach((p, i) => {
-    const isConv = convQs[i];
-    const isQ4   = i === 3;
-    const paidQ  = paid[i];
-    html += `<tr class="${isConv ? 'conv-row' : 'normal-row'}">
-      <td class="period-cell">
-        <span class="period-badge ${isConv ? 'conv' : 'plain'}">${p.label}</span>
-        <span class="period-range">${p.range}</span>
-        ${isConv ? `<span class="conv-tag">↑ CONVERSION</span>` : ''}
-        ${isQ4 && !isConv ? `<span class="q4-tag">incl. balance</span>` : ''}
-      </td>
-      <td class="due-cell">${p.due}${paidQ > 0 ? `<div class="paid-tag">paid ${fmt(paidQ)}</div>` : ''}</td>
-      ${payments.map((pm, ci) => `<td class="amount-cell" style="font-weight:${isConv||isQ4?700:400};color:${COL_COLORS[ci]}">${fmt(pm[i])}</td>`).join('')}
-    </tr>`;
+function calcNIIT(magi, netInvestmentIncome, filing) {
+  const threshold = NIIT_THRESHOLD[filing];
+  const excessMAGI = Math.max(0, magi - threshold);
+  return NIIT_RATE * Math.min(netInvestmentIncome, excessMAGI);
+}
+// NJ allows an additional $1,000 exemption per spouse age 65+ on the last day
+// of the tax year. Both Victoria and Vitaly are 65+, so this adds $2,000 total
+// for MFJ filing — on top of the base $2,000 personal exemption above.
+const NJ_SENIOR_EXEMPTION_PER_PERSON = 1000;
+const NJ_SENIORS_65_PLUS = {mfj: 2, single: 1}; // both spouses 65+ for MFJ
+
+function njTax(taxable, filing) {
+  const brackets = filing === 'mfj' ? NJ_BRACKETS_MFJ : NJ_BRACKETS_SINGLE;
+  let tax = 0, prev = 0;
+  for (const b of brackets) {
+    if (taxable <= prev) break;
+    tax += (Math.min(taxable, b.top) - prev) * b.rate;
+    prev = b.top;
+  }
+  return tax;
+}
+
+// IRMAA 2026 ACTUAL thresholds (MFJ), confirmed via CMS. Top tier ($750K) is frozen,
+// not indexed for inflation until at least 2028 per current law.
+const IRMAA_BASE_2026 = { standard: 218000, tier1: 274000, tier2: 342000, tier3: 410000, tier4: 750000 };
+const CPI = 0.028; // general inflation: tax brackets / standard deduction
+// IRMAA bracket (threshold) growth, separate from CPI. Medicare applies the bracket of
+// year Y+2 to MAGI earned in year Y (2-year lookback), so MAGI caps use the bracket
+// IRMAA_LOOKBACK years ahead, projected at the 'IRMAA bracket growth' slider rate per year from the 2026 base.
+function irmaaBracketGrowth() {
+  const el = document.getElementById('irmaa-growth-input');
+  const v = el ? parseFloat(el.value) : NaN;
+  return (isNaN(v) ? 3.5 : v) / 100;
+}
+const IRMAA_LOOKBACK = 2;
+// Medicare Part B/D premiums (and their IRMAA surcharges) have historically
+// grown faster than general CPI — averaging roughly 6%/year over the past
+// decade, driven by rising healthcare costs. This is applied to the surcharge
+// DOLLAR AMOUNTS below, separate from CPI which only inflates the MAGI
+// thresholds that determine which tier you fall into.
+const MEDICARE_PREMIUM_INFLATION = 0.06;
+
+function inflatedIRMAA(baseTier, year, frozen) {
+  if (frozen) return baseTier; // top tier frozen until 2028+
+  const yearsOut = year - 2026;
+  return Math.round(baseTier * Math.pow(1 + irmaaBracketGrowth(), yearsOut) / 1000) * 1000;
+}
+
+// Returns inflated IRMAA limit for the selected tier in a given year
+function irmaaLimitForYear(tierBase, magiYear) {
+  if (tierBase >= 999999) return 999999;
+  const year = magiYear + IRMAA_LOOKBACK; // bracket in force when this MAGI is assessed
+  const { standard, tier1, tier2, tier3, tier4 } = IRMAA_BASE_2026;
+  if (Math.abs(tierBase - standard) < 1000) return inflatedIRMAA(standard, year, false);
+  if (Math.abs(tierBase - tier1) < 1000) return inflatedIRMAA(tier1, year, false);
+  if (Math.abs(tierBase - tier2) < 1000) return inflatedIRMAA(tier2, year, false);
+  if (Math.abs(tierBase - tier3) < 1000) return inflatedIRMAA(tier3, year, false);
+  if (Math.abs(tierBase - tier4) < 1000) return inflatedIRMAA(tier4, year, true); // frozen tier
+  return tierBase; // fallback
+}
+
+// ===== IRMAA SURCHARGE (actual dollar cost, not just a pass/fail flag) =====
+// 2026 actual MFJ surcharge tiers (CMS-confirmed). Each tier = { magiFloor, partB, partD }
+// partB and partD are MONTHLY surcharge amounts, PER PERSON.
+// IMPORTANT: IRMAA uses a real 2-year lookback — your year Y premium is based on
+// your year Y-2 MAGI. This model applies that lag explicitly (see project()).
+const IRMAA_SURCHARGE_TIERS_MFJ = [
+  { magiFloor: 0,      partB: 0,      partD: 0 },     // standard, under $218K
+  { magiFloor: 218000, partB: 81.20,  partD: 14.50 }, // tier 1: $218K-$274K
+  { magiFloor: 274000, partB: 202.90, partD: 37.50 }, // tier 2: $274K-$342K
+  { magiFloor: 342000, partB: 324.60, partD: 60.40 }, // tier 3: $342K-$410K
+  { magiFloor: 410000, partB: 446.30, partD: 83.30 }, // tier 4: $410K-$750K
+  { magiFloor: 750000, partB: 487.00, partD: 91.00 }, // tier 5: $750K+ (frozen floor)
+];
+const MEDICARE_ENROLLED_COUNT = 2; // both spouses on Medicare — surcharge applies per person
+
+// Given a MAGI (already inflated/nominal for its year) and the PAYMENT year
+// (the year the premium is actually billed — 2 years after the MAGI that
+// triggered it), find which tier the MAGI falls into and return the ANNUAL
+// household surcharge (monthly Part B + Part D, x12, x number of enrolled
+// people), with the dollar amounts inflated at the Medicare premium rate
+// (not CPI) to the payment year — since premium schedules themselves rise
+// each year regardless of which year's MAGI is being evaluated.
+function irmaaSurchargeForMAGI(magi, paymentYear) {
+  // Inflate each tier's MAGI floor at the IRMAA bracket growth rate (same as irmaaLimitForYear), based
+  // on the payment year — floors for a given billing year are set relative to
+  // that year's IRMAA brackets, not the lookback year's brackets.
+  const floors = IRMAA_SURCHARGE_TIERS_MFJ.map((t, i) => {
+    if (t.magiFloor === 0) return 0;
+    const frozen = i === IRMAA_SURCHARGE_TIERS_MFJ.length - 1;
+    return inflatedIRMAA(t.magiFloor, paymentYear, frozen);
+  });
+  let tierIdx = 0;
+  for (let i = floors.length - 1; i >= 0; i--) {
+    if (magi >= floors[i]) { tierIdx = i; break; }
+  }
+  const tier = IRMAA_SURCHARGE_TIERS_MFJ[tierIdx];
+  // Inflate the dollar surcharge amounts themselves at the Medicare premium
+  // rate (~6%/yr historically), compounded from the 2026 base to the payment year.
+  const premiumFactor = Math.pow(1 + MEDICARE_PREMIUM_INFLATION, paymentYear - 2026);
+  const monthlyPerPerson = (tier.partB + tier.partD) * premiumFactor;
+  return monthlyPerPerson * 12 * MEDICARE_ENROLLED_COUNT;
+}
+
+// Inflate tax brackets for a given year (2.5%/yr from 2026 base)
+function inflatedBrackets(filing, year) {
+  const base = filing === 'mfj' ? BRACKETS_MFJ : BRACKETS_SINGLE;
+  const factor = Math.pow(1 + CPI, year - 2026);
+  return base.map(b => ({ rate: b.rate, top: b.top === Infinity ? Infinity : Math.round(b.top * factor) }));
+}
+
+function inflatedStdDed(filing, year) {
+  return Math.round(STD_DED[filing] * Math.pow(1 + CPI, year - 2026));
+}
+
+function fedTax(taxable, brackets) {
+  let tax = 0, prev = 0;
+  for (const b of brackets) {
+    if (taxable <= prev) break;
+    tax += (Math.min(taxable, b.top) - prev) * b.rate;
+    prev = b.top;
+  }
+  return tax;
+}
+
+function margRate(taxable, brackets) {
+  for (const b of brackets) { if (taxable <= b.top) return b.rate; }
+  return 0.37;
+}
+
+function rmd(bal, age) {
+  if (age < 73) return 0;
+  const factor = RMD_TABLE[Math.min(age, 96)] || 8.4;
+  return bal / factor;
+}
+
+// SS income schedule — fixed, phase-in per actual start dates
+// Vitaly: starts March 2027 ($39,000 in 2027 = 10 months, $46,800/yr from 2028)
+// Victoria: starts August 2028 ($22,925 in 2028 = 5 months, $55,020/yr from 2029)
+// Annual amounts below are the full-year benefit at the age-70 claiming; partial
+// years are pro-rated from them (annual / 12 x months received).
+const VITALY_SS_ANNUAL = 46800;
+const VICTORIA_SS_ANNUAL = 55020;
+const VITALY_SS_MONTHS_2027 = 10;   // March-December 2027
+const VICTORIA_SS_MONTHS_2028 = 5;  // August-December 2028
+// 85% of SS included in MAGI for federal tax purposes
+
+// ===== EDITABLE INCOME ASSUMPTIONS (2026 base year) =====
+const ANNUITY_2026 = 31200;     // annuity income — fixed, not currently a UI input
+// Per-year capital gains and dividends/interest are editable directly in the
+// year-by-year table (see YEARLY_OVERRIDES). Defaults come from the
+// capgains-default / divint-default sliders, optionally growing with the
+// portfolio growth rate if "invest-income-grows" is set to grow.
+// ===========================================================
+
+function ssIncome(year, otherInvestmentIncome, annuitySwap) {
+  // annuitySwap: { enabled, startYear, oldAmount, newAmount } — if enabled,
+  // the oldAmount portion of the annuity pauses for 2 years starting at
+  // startYear, then resumes at newAmount from startYear+2 onward. The
+  // remainder of ANNUITY_2026 (the portion not being swapped) is unaffected.
+  let annuity = ANNUITY_2026;
+  if (annuitySwap && annuitySwap.enabled) {
+    const pauseStart = annuitySwap.startYear;
+    const pauseEnd = pauseStart + 1; // 2 pause years: startYear and startYear+1
+    const resumeYear = pauseStart + 2;
+    const remainder = ANNUITY_2026 - annuitySwap.oldAmount; // unaffected portion
+    if (year >= pauseStart && year <= pauseEnd) {
+      annuity = remainder; // old annuity portion paused, only remainder continues
+    } else if (year >= resumeYear) {
+      annuity = remainder + annuitySwap.newAmount; // new annuity replaces old
+    }
+    // years before pauseStart: unaffected, use full ANNUITY_2026
+  }
+  if (year <= 2026) return { gross: annuity, taxableSS: 0, rawSS: 0, total: annuity + otherInvestmentIncome };
+  if (year === 2027) {
+    // Vitaly: SS starts March 2027, 10 months (Mar-Dec) of benefit.
+    // Pro-rated from the annual amount: 46,800/12*10 = 39,000.
+    const vitalySS = Math.round(VITALY_SS_ANNUAL / 12 * VITALY_SS_MONTHS_2027);
+    return { gross: annuity + vitalySS, taxableSS: Math.round(vitalySS * 0.85), rawSS: vitalySS, total: annuity + Math.round(vitalySS * 0.85) + otherInvestmentIncome };
+  }
+  if (year === 2028) {
+    // Vitaly: full year at $46,800.
+    // Victoria: SS starts August 2028, 5 months (Aug-Dec) of benefit.
+    // Pro-rated from the annual amount: 55,020/12*5 = 22,925.
+    const vitalySS = VITALY_SS_ANNUAL;
+    const victoriaSS = Math.round(VICTORIA_SS_ANNUAL / 12 * VICTORIA_SS_MONTHS_2028);
+    const totalSS = vitalySS + victoriaSS;
+    return { gross: annuity + totalSS, taxableSS: Math.round(totalSS * 0.85), rawSS: totalSS, total: annuity + Math.round(totalSS * 0.85) + otherInvestmentIncome };
+  }
+  // 2029+: both full year
+  const totalSS = VITALY_SS_ANNUAL + VICTORIA_SS_ANNUAL;
+  return { gross: annuity + totalSS, taxableSS: Math.round(totalSS * 0.85), rawSS: totalSS, total: annuity + Math.round(totalSS * 0.85) + otherInvestmentIncome };
+}
+
+function calcOptimalConv(baseOrdinary, rmdAmt, brackets, stdDed, irmaaLimit, njCap, strategy, tradAvail, buffer) {
+  // Total income already locked in before any voluntary conversion
+  const lockedIncome = baseOrdinary + rmdAmt;
+  let convByBracket = Infinity;
+  let convByIRMAA = Infinity;
+
+  if (strategy === 'bracket22' || strategy === 'bracket22_irmaa' || strategy === 'bracket22_nocap') {
+    const bracketTop = brackets.find(b => b.rate === 0.22)?.top || 201050;
+    const lockedTaxable = Math.max(0, lockedIncome - stdDed);
+    convByBracket = Math.max(0, bracketTop - lockedTaxable - buffer);
+  } else if (strategy === 'bracket24' || strategy === 'bracket24_irmaa' || strategy === 'bracket24_nocap') {
+    const bracketTop = brackets.find(b => b.rate === 0.24)?.top || 383900;
+    const lockedTaxable = Math.max(0, lockedIncome - stdDed);
+    convByBracket = Math.max(0, bracketTop - lockedTaxable - buffer);
+  }
+
+  if (strategy === 'irmaa_only' || strategy === 'bracket22_irmaa' || strategy === 'bracket24_irmaa') {
+    convByIRMAA = Math.max(0, irmaaLimit - lockedIncome - buffer - 1);
+  }
+
+  // NJ MAGI cap: always enforced regardless of strategy (hard ceiling).
+  // A safety buffer is subtracted here too, so the conversion stops short of
+  // the cap by that margin — useful if cap gains/dividends (which count toward
+  // MAGI) might come in higher than estimated when you actually file.
+  // <!-- NJ_CAP_LOGIC: To update threshold, change the njCap value passed from project() -->
+  // The *_nocap strategies deliberately ignore the MAGI cap (NJ/ANCHOR/IRMAA) so you can
+  // see what filling the bracket would cost; the Cap OK? column will flag the years over.
+  const ignoreCap = strategy === 'bracket22_nocap' || strategy === 'bracket24_nocap';
+  const convByNJ = ignoreCap ? Infinity : Math.max(0, njCap - lockedIncome - buffer - 1);
+
+  return Math.max(0, Math.min(convByBracket, convByIRMAA, convByNJ, tradAvail));
+}
+
+function project() {
+  const filing = $('filing-select').value;
+  const numSeniors = parseInt($('num-seniors-select').value) || 0;
+  const startYear = parseInt($('start-year-input').value);
+  const startAge = parseInt($('age-slider').value);
+  // MAGI caps are now per-year via the capType dropdown in the table (YEARLY_OVERRIDES);
+  // default for un-overridden years is NJ Freeze $200K, resolved inside the loop below.
+  const strategy = $('conv-strategy').value;
+  const fixedConv = strategy === 'fixed' ? parseInt($('conv-slider').value) : null;
+  const capGainsDefault = parseInt($('capgains-default').value);
+  const divIntDefault = parseInt($('divint-default').value);
+  const investGrows = $('invest-income-grows').value === 'grows';
+  const medicalDefault = parseInt($('medical-expenses-default').value) || 0;
+  const conversionBuffer = parseInt($('conversion-buffer-input').value) || 0;
+  const hsaGrowth = parseFloat($('hsa-growth-input').value) / 100 || 0;
+  const useHSAForMedical = $('hsa-use-toggle').value === 'yes';
+  let hsaBalance = STATE.hsaBalance;
+  const annuitySwap = {
+    enabled: $('annuity-swap-enabled').value === 'on',
+    startYear: parseInt($('annuity-swap-start-year').value),
+    oldAmount: parseInt($('annuity-swap-old').value) || 0,
+    newAmount: parseInt($('annuity-swap-new').value) || 0,
+  };
+  // If the annuity is paused, the shortfall needs to come from somewhere —
+  // withdrawn directly from the Traditional IRA, taxed exactly like a
+  // conversion, and competing for the SAME MAGI cap room (per user's choice:
+  // displacement, not addition). This withdrawal reduces how much can be
+  // voluntarily converted that year, since both draw from the same capped space.
+  function annuityGapWithdrawal(year) {
+    if (!annuitySwap.enabled) return 0;
+    const pauseStart = annuitySwap.startYear;
+    const pauseEnd = pauseStart + 1;
+    if (year >= pauseStart && year <= pauseEnd) return annuitySwap.oldAmount;
+    return 0;
+  }
+
+  let trad = STATE.tradIRA, roth = STATE.rothIRA;
+  const tradGrowth = parseFloat($('trad-growth-input').value) / 100;
+  const rothGrowth = parseFloat($('roth-growth-input').value) / 100;
+  const cashGrowth = parseFloat($('cash-growth-input').value) / 100 || 0;
+  const cashInflow = parseInt($('cash-inflow-input').value) || 0;
+  const livingExpenses = parseInt($('living-expenses-input').value) || 0;
+  const taxWithholdPct = (parseInt($('tax-withhold-pct-input').value) || 0) / 100;
+  const rows = [];
+
+  for (let i = 0; i < 29; i++) {
+    const year = startYear + i;
+    // Age is anchored to the fixed "age in 2026" reference point, NOT to the
+    // shiftable projection start year — your actual birthdate doesn't move
+    // just because you changed which year the tool starts displaying from.
+    // This keeps RMD age (73) landing in the correct real calendar year
+    // regardless of the start-year setting.
+    const age = startAge + (year - 2026);
+    trad *= (1 + tradGrowth);
+    roth *= (1 + rothGrowth);
+
+    // Resolve this year's capital gains, dividends/interest, and medical expenses:
+    // use a manual per-year override if one exists, otherwise fall back to the
+    // default sliders (optionally compounding with portfolio growth rate).
+    const override = YEARLY_OVERRIDES[year] || {};
+    const growthFactor = investGrows ? Math.pow(1 + tradGrowth, i) : 1;
+    const capGains = override.capGains !== undefined ? override.capGains : Math.round(capGainsDefault * growthFactor);
+    const divInt = override.divInt !== undefined ? override.divInt : Math.round(divIntDefault * growthFactor);
+    const medicalExpenses = override.medical !== undefined ? override.medical : medicalDefault;
+
+    // HSA grows first, then covers this year's medical expenses if enabled and
+    // funds remain. Only the portion NOT covered by the HSA is "unreimbursed"
+    // and eligible for the NJ medical deduction — HSA-paid expenses aren't
+    // unreimbursed, so they lose that deduction (accurate to NJ tax rules).
+    hsaBalance *= (1 + hsaGrowth);
+    let hsaCoveredMedical = 0;
+    if (useHSAForMedical) {
+      hsaCoveredMedical = Math.min(medicalExpenses, hsaBalance);
+      hsaBalance -= hsaCoveredMedical;
+    }
+    const unreimbursedMedical = medicalExpenses - hsaCoveredMedical; // what's left for the NJ deduction
+    // HSA-covered medical expenses don't hit cash — they're paid from the HSA,
+    // tax-free, outside the cash flow entirely. Only the unreimbursed portion
+    // (if HSA is disabled or depleted) still needs to come from cash — but
+    // "medical expenses" as a cash outflow was never separately modeled before
+    // (only its NJ deduction effect was); this HSA logic doesn't change cash
+    // flow, only the NJ medical deduction eligibility.
+    const otherInvestmentIncome = capGains + divInt;
+
+    // Inflation-adjusted values for this year
+    const brackets = inflatedBrackets(filing, year);
+    const stdDed = inflatedStdDed(filing, year);
+
+    // Per-year MAGI cap: a single unified constraint chosen per row via dropdown.
+    // 'nj200'/'nj250' = NJ Senior Freeze/ANCHOR (fixed, not inflated).
+    // 'irmaa0'-'irmaa3' = IRMAA tiers (bracket 2 years ahead, grown at the IRMAA bracket growth slider).
+    // 'none' = no cap. Default for un-overridden years: NJ Freeze $200K.
+    const capType = override.capType !== undefined ? override.capType : 'nj250';
+    let magiCap;
+    switch (capType) {
+      case 'nj200':  magiCap = 200000; break;
+      case 'nj250':  magiCap = 250000; break;
+      case 'irmaa0': magiCap = irmaaLimitForYear(218000, year); break;
+      case 'irmaa1': magiCap = irmaaLimitForYear(274000, year); break;
+      case 'irmaa2': magiCap = irmaaLimitForYear(342000, year); break;
+      case 'irmaa3': magiCap = irmaaLimitForYear(410000, year); break;
+      case 'none':
+      default:       magiCap = 999999999; break;
+    }
+    // Both the bracket-strategy IRMAA arg and NJ cap arg now use the same unified cap;
+    // the strategy takes the lower of bracket room and magiCap.
+    const irmaaLimit = magiCap;
+    const njCap = magiCap;
+
+    const { gross: baseGross, total: baseOrdinary, rawSS } = ssIncome(year, otherInvestmentIncome, annuitySwap);
+    const rmdAmt = rmd(trad, age);
+    // Annuity gap withdrawal: money pulled from the Traditional IRA to cover
+    // the paused annuity income during the 2-year swap window. Like RMD, this
+    // is mandatory (you need the cash) and taxable, but unlike RMD it goes to
+    // CASH, not to the Roth. It displaces conversion room dollar-for-dollar
+    // since both compete for the same MAGI cap.
+    const gapWithdrawal = annuityGapWithdrawal(year);
+    const tradAvail = Math.max(0, trad - rmdAmt - gapWithdrawal);
+
+    let actualConv;
+    if (strategy === 'fixed') {
+      actualConv = Math.min(fixedConv, tradAvail);
+    } else {
+      // Pass (rmdAmt + gapWithdrawal) as the "locked" mandatory distribution,
+      // so the optimizer correctly sees the gap withdrawal as using up room
+      // the same way RMD does.
+      actualConv = calcOptimalConv(baseOrdinary, rmdAmt + gapWithdrawal, brackets, stdDed, irmaaLimit, njCap, strategy, tradAvail, conversionBuffer);
+    }
+    actualConv = Math.max(0, actualConv);
+
+    const totalDist = rmdAmt + gapWithdrawal + actualConv;
+    trad -= totalDist;
+    roth += actualConv;
+
+    // ===== TAX CALC IN THREE LAYERS =====
+    // Layer 0: baseline (annuity + SS + cap gains/div, no IRA distributions)
+    // Layer 1: baseline + RMD + gap withdrawal (both mandatory — RMD by law,
+    // gap withdrawal because the annuity income it replaces is gone that year)
+    // Layer 2: baseline + RMD + gap withdrawal + conversion (the voluntary part)
+    // This isolates the mandatory distributions' tax cost from the conversion's
+    // incremental tax cost.
+    const mandatoryDist = rmdAmt + gapWithdrawal;
+    const magi = baseOrdinary + totalDist;
+    // Cap gains taxed at preferential 15% federal rate; ordinary income (annuity,
+    // SS, dividends/interest, conversions, RMDs) taxed at regular brackets.
+    // OBBBA senior deduction phases out 6%/$ over $150K MAGI (MFJ).
+    const obbba = obbbaDed(magi, numSeniors, year);
+    const ordinaryTotal = baseOrdinary - capGains + totalDist;
+    const taxable = Math.max(0, ordinaryTotal - stdDed - obbba);
+    const totalTax = fedTax(taxable, brackets) + capGains * 0.15;
+
+    const ordinaryBase = baseOrdinary - capGains;
+    const obbbaBase = obbbaDed(ordinaryBase, numSeniors, year);
+    const baseTaxable = Math.max(0, ordinaryBase - stdDed - obbbaBase);
+    const baseTax = fedTax(baseTaxable, brackets) + capGains * 0.15;
+
+    const rmdOnlyMagi = ordinaryBase + mandatoryDist;
+    const obbbaRmd = obbbaDed(rmdOnlyMagi, numSeniors, year);
+    const rmdOnlyTaxable = Math.max(0, rmdOnlyMagi - stdDed - obbbaRmd);
+    const rmdOnlyTax = fedTax(rmdOnlyTaxable, brackets) + capGains * 0.15;
+
+    const rmdTax = rmdOnlyTax - baseTax;       // federal tax attributable to RMD + gap withdrawal
+    const convTax = totalTax - rmdOnlyTax;     // federal tax attributable to conversion alone
+    const effRate = magi > 0 ? totalTax / magi : 0;
+
+    // NIIT: 3.8% on the lesser of net investment income (cap gains + dividends/
+    // interest) or the amount MAGI exceeds $250K MFJ. Conversions and RMDs are
+    // NOT themselves NIIT income, but they DO push MAGI up, which can trigger
+    // NIIT on investment income that would otherwise sit under the threshold.
+    const niit = calcNIIT(magi, otherInvestmentIncome, filing);
+    // Isolate how much of the NIIT is attributable to the conversion specifically:
+    // compare NIIT with vs without the conversion's contribution to MAGI.
+    const magiWithoutConv = baseOrdinary + rmdAmt;
+    const niitWithoutConv = calcNIIT(magiWithoutConv, otherInvestmentIncome, filing);
+    const niitFromConv = niit - niitWithoutConv;
+
+    // ===== NJ STATE TAX (same three-layer approach) =====
+    // NJ excludes Social Security entirely (rawSS subtracted out), has no standard
+    // deduction (only a personal exemption), brackets fixed/not inflation-indexed,
+    // and taxes IRA distributions (RMD + conversion) as ordinary income.
+    // Exemption = base personal exemption + $1,000/person for each spouse 65+.
+    // Medical expense deduction = unreimbursed medical expenses exceeding 2% of
+    // NJ gross income (computed per income layer, since gross income itself
+    // changes across the three layers).
+    const njExemption = NJ_PERSONAL_EXEMPTION[filing] + (NJ_SENIORS_65_PLUS[filing] * NJ_SENIOR_EXEMPTION_PER_PERSON);
+    const njBaseIncome = baseOrdinary - rawSS; // annuity + cap gains + dividends, SS excluded
+    const njMedicalDeduction = (grossIncomeForMedical) => Math.max(0, unreimbursedMedical - (grossIncomeForMedical * 0.02));
+
+    const njGrossTotal = njBaseIncome + totalDist;
+    const njGrossBase = njBaseIncome;
+    const njGrossRmdOnly = njBaseIncome + mandatoryDist;
+
+    const njTaxableTotal = Math.max(0, njGrossTotal - njExemption - njMedicalDeduction(njGrossTotal));
+    const njTaxableBase = Math.max(0, njGrossBase - njExemption - njMedicalDeduction(njGrossBase));
+    const njTaxableRmdOnly = Math.max(0, njGrossRmdOnly - njExemption - njMedicalDeduction(njGrossRmdOnly));
+    const njTotalTax = njTax(njTaxableTotal, filing);
+    const njBaseTax = njTax(njTaxableBase, filing);
+    const njRmdOnlyTax = njTax(njTaxableRmdOnly, filing);
+    const njRmdTax = njRmdOnlyTax - njBaseTax;     // NJ tax attributable to RMD alone
+    const njConvTax = njTotalTax - njRmdOnlyTax;   // NJ tax attributable to conversion alone
+
+    // irmaaHit is properly computed in Pass 2 below (with the real 2-year
+    // lookback applied) — this placeholder just satisfies the row object shape
+    // until Pass 2 overwrites it.
+    const irmaaHit = false;
+    const njCapHit = njCap < 999999 && magi > njCap;
+    const capHit = magiCap < 999999999 && magi > magiCap;
+    const mr = margRate(taxable, brackets);
+
+    // ===== CASH SHORTFALL TRACKING =====
+    // RMD is a forced distribution — the gross amount lands in cash/brokerage
+    // (it's not staying invested in the IRA), so it's a real cash INFLOW.
+    // Annuity and Social Security are real income that lands in your bank account.
+    // Capital gains and dividends/interest are NOT included here (per user
+    // preference) — they're treated as staying invested/reinvested rather than
+    // becoming spendable cash, even though tax is still owed on them (see
+    // totalBaseTax below, which still reflects tax on the full base income
+    // including cap gains/dividends).
+    const totalConvTax = convTax + njConvTax;     // tax cost attributable to the voluntary conversion only
+    const totalRmdTax = rmdTax + njRmdTax;        // tax cost attributable to RMD + gap withdrawal (mandatory distributions)
+    const totalBaseTax = baseTax + njBaseTax;     // tax cost attributable to base income (annuity+SS+investments)
+    let netRothCredit = actualConv; // how much actually reaches the Roth
+    let cashFlowOut = livingExpenses + totalBaseTax; // living expenses + tax on base income always come out of cash
+    let cashFlowIn = baseGross + rmdAmt + gapWithdrawal + cashInflow; // annuity+SS (gross) + RMD + annuity-gap IRA withdrawal + manual inflow
+
+    // Partial IRA withholding: taxWithholdPct (0-100%) of the FEDERAL conversion
+    // tax is withheld directly from the IRA distribution, reducing what reaches
+    // the Roth. NJ conversion tax and NIIT are always paid from cash regardless
+    // of this setting (custodians don't withhold state tax or NIIT on conversions).
+    const fedWithheld = convTax * taxWithholdPct;
+    netRothCredit = actualConv - fedWithheld;
+    roth -= fedWithheld; // the withheld portion never made it to the Roth — it went to the IRS
+    cashFlowOut += njConvTax + (convTax - fedWithheld); // NJ tax + whatever fed tax wasn't withheld, both from cash
+
+    // RMD's own tax (fed + NJ) is always paid from cash — RMD withholding isn't modeled
+    // as a separate toggle here since it's mandatory regardless of conversion strategy.
+    cashFlowOut += totalRmdTax;
+
+    // NIIT is a real federal tax bill, paid from cash regardless of the
+    // IRA-withholding toggle (custodians don't withhold NIIT on conversions).
+    cashFlowOut += niit;
+
+    // Net cash deficit/surplus for the year: inflow minus outflow, before this
+    // year's cash growth is applied to the running balance (Pass 3). Positive =
+    // surplus (cash grew from this year's activity alone); negative = deficit.
+    const netCashFlow = cashFlowIn - cashFlowOut;
+
+    rows.push({ year, age, conv: actualConv, netRothCredit, rmdAmt, gapWithdrawal, convTax, njConvTax, totalConvTax,
+      rmdTax, njRmdTax, totalRmdTax, totalTax, njTotalTax, effRate, trad, roth, niit, niitFromConv,
+      grossInc: baseGross, magi, irmaaLimit, irmaaHit, njCap, njCapHit, capType, magiCap, capHit,
+      margR: mr, baseOrdinary, capGains, divInt, medicalExpenses, hsaCoveredMedical, unreimbursedMedical, hsaBalance,
+      cashFlowOut, cashFlowIn, netCashFlow, livingExpenses });
+  }
+
+  // ===== PASS 2: APPLY IRMAA SURCHARGE WITH REAL 2-YEAR LOOKBACK =====
+  // Your year Y Medicare premium is based on your year Y-2 MAGI (CMS uses the
+  // most recently filed tax return, which lags 2 years). For years 2026-2027,
+  // we don't have a prior in-model MAGI to look back to, so no surcharge is
+  // assumed those two years (i.e. assume current premiums reflect pre-conversion
+  // income). From 2028 onward, the surcharge is computed from the row 2 years back.
+  const magiByYear = {};
+  rows.forEach(r => { magiByYear[r.year] = r.magi; });
+
+  for (const r of rows) {
+    const lookbackYear = r.year - 2;
+    const lookbackMagi = magiByYear[lookbackYear]; // undefined if outside our 15-year window
+    const irmaaSurcharge = lookbackMagi !== undefined ? irmaaSurchargeForMAGI(lookbackMagi, r.year) : 0;
+
+    r.irmaaSurcharge = irmaaSurcharge;
+    r.cashFlowOut += irmaaSurcharge;
+
+    // Overwrite irmaaHit (originally computed against THIS year's own MAGI in
+    // the main loop) with the historically-accurate version: are you actually
+    // paying an IRMAA surcharge THIS year, based on your MAGI from 2 years ago?
+    // This matches the real-world mechanics and is now consistent with the
+    // irmaaSurcharge dollar figure above, instead of contradicting it.
+    r.irmaaHit = irmaaSurcharge > 0;
+  }
+
+  // ===== PASS 3: FINALIZE CASH BALANCE (sequential, growth-compounded) =====
+  let cash = STATE.outsideCash;
+  for (const r of rows) {
+    cash *= (1 + cashGrowth);
+    cash = cash - r.cashFlowOut + r.cashFlowIn;
+    r.cash = cash;
+    r.cashShortfall = cash < 0;
+  }
+
+  return rows;
+}
+
+function update() {
+  const strategy = $('conv-strategy').value;
+  $('fixed-conv-row').style.display = strategy === 'fixed' ? 'flex' : 'none';
+  if (strategy === 'fixed') {
+    $('conv-val').textContent = fmt(parseInt($('conv-slider').value));
+  }
+  $('annuity-swap-details').style.display = $('annuity-swap-enabled').value === 'on' ? 'flex' : 'none';
+  $('trad-growth-val').textContent = parseFloat($('trad-growth-input').value).toFixed(1) + '%';
+  $('roth-growth-val').textContent = parseFloat($('roth-growth-input').value).toFixed(1) + '%';
+  $('capgains-default-val').textContent = fmt(parseInt($('capgains-default').value));
+  $('divint-default-val').textContent = fmt(parseInt($('divint-default').value));
+  $('start-year-val').textContent = $('start-year-input').value;
+  $('age-val').textContent = 'Age ' + $('age-slider').value;
+  $('medical-expenses-default-val').textContent = fmt(parseInt($('medical-expenses-default').value));
+  $('conversion-buffer-val').textContent = fmt(parseInt($('conversion-buffer-input').value));
+  $('irmaa-growth-val').textContent = parseFloat($('irmaa-growth-input').value).toFixed(1) + '%';
+  $('tax-withhold-pct-val').textContent = $('tax-withhold-pct-input').value + '%';
+
+  const rows = project();
+  const r0 = rows[0], rLast = rows[rows.length - 1];
+
+  $('summary-grid').innerHTML = `
+    <div class="s-metric"><div class="s-label">Year 1 conversion</div><div class="s-value">${fmt(r0.conv)}</div></div>
+    <div class="s-metric"><div class="s-label">Year 1 total tax (Fed+NJ+NIIT)</div><div class="s-value amber">${fmt(r0.totalTax + r0.niit + r0.njTotalTax)}</div><div class="s-label" style="margin:2px 0 0;font-size:10px;">of which conversion: ${fmt(r0.totalConvTax)}</div></div>
+    <div class="s-metric"><div class="s-label">Year 1 NIIT</div><div class="s-value ${r0.niit > 0 ? 'amber' : 'green'}">${fmt(r0.niit)}</div></div>
+    <div class="s-metric"><div class="s-label">Marginal rate</div><div class="s-value ${r0.margR >= 0.32 ? 'red' : r0.margR >= 0.24 ? 'amber' : 'green'}">${(r0.margR*100).toFixed(0)}%</div></div>
+    <div class="s-metric"><div class="s-label">Year 1 MAGI</div><div class="s-value ${r0.irmaaHit || r0.njCapHit ? 'red' : 'green'}">${fmtK(r0.magi)}</div></div>
+    <div class="s-metric"><div class="s-label">Cash after year 1</div><div class="s-value ${r0.cashShortfall ? 'red' : 'green'}">${fmtK(r0.cash)}</div></div>
+  `;
+
+  const warns = [];
+  if (r0.irmaaHit) warns.push(`⚠ IRMAA: Year 1 MAGI (${fmt(r0.magi)}) exceeds IRMAA threshold.`);
+  if (r0.njCapHit) warns.push(`⚠ NJ cap: Year 1 MAGI (${fmt(r0.magi)}) exceeds NJ income ceiling (${fmt(r0.njCap)}).`);
+  if (r0.niit > 0) warns.push(`⚠ NIIT: Year 1 triggers ${fmt(r0.niit)} in Net Investment Income Tax (MAGI exceeds the $250K fixed threshold).`);
+
+  // Scan all years for the first cash shortfall, not just year 1 — shortfalls
+  // often show up later as conversion taxes compound and outside cash depletes.
+  const firstShortfallYear = rows.find(r => r.cashShortfall);
+  if (firstShortfallYear) {
+    warns.push(`⚠ Cash shortfall: outside cash runs negative in ${firstShortfallYear.year} (projected balance ${fmt(firstShortfallYear.cash)}). Consider reducing conversions, switching to IRA withholding, or adding cash inflow.`);
+  }
+
+  $('irmaa-warn').innerHTML = warns.length ? `<div class="warn">${warns.join('<br>')}</div>` : '';
+
+  renderCharts(rows);
+  renderTable(rows);
+}
+
+function renderCharts(rows) {
+  const labels = rows.map(r => r.year);
+
+  if (balChart) balChart.destroy();
+  balChart = new Chart($('balChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Traditional IRA', data: rows.map(r => Math.round(r.trad)), backgroundColor: '#FAC775', borderRadius: 3 },
+        { label: 'Roth IRA', data: rows.map(r => Math.round(r.roth)), backgroundColor: '#5DCAA5', borderRadius: 3 },
+      ]
+    },
+    options: chartOpts(v => fmtK(v))
   });
 
-  html += `</tbody><tfoot><tr>
-    <td colspan="2">Full-year total</td>
-    ${totals.map((v,ci) => `<td class="total-amt" style="color:${COL_COLORS[ci]}">${fmt(v)}</td>`).join('')}
-  </tr>`;
+  if (taxChart) taxChart.destroy();
+  taxChart = new Chart($('taxChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Federal conversion tax', data: rows.map(r => Math.round(r.convTax)), backgroundColor: '#F0997B', borderRadius: 3 },
+        { label: 'NJ conversion tax', data: rows.map(r => Math.round(r.njConvTax)), backgroundColor: '#E8A33D', borderRadius: 3 },
+        { label: 'RMD tax (Fed+NJ)', data: rows.map(r => Math.round(r.totalRmdTax)), backgroundColor: '#AFA9EC', borderRadius: 3 },
+        { label: 'IRMAA surcharge', data: rows.map(r => Math.round(r.irmaaSurcharge)), backgroundColor: '#E07B7B', borderRadius: 3 },
+        { label: 'NIIT', data: rows.map(r => Math.round(r.niit)), backgroundColor: '#7BA5E0', borderRadius: 3 },
+      ]
+    },
+    options: chartOpts(v => fmtK(v))
+  });
 
-  if (hasPaid) {
-    html += `<tr class="paid-row">
-      <td colspan="2" class="paid-summary" style="padding:9px 14px">
-        <span style="font-weight:700">Paid so far: </span>
-        <span style="color:#3d6020;font-weight:700;font-family:monospace">${fmt(paidTotal)}</span>
-        ${withh > 0 ? `<span style="color:#6b4f2e"> + ${fmt(withh)} withholding</span>` : ''}
-      </td>
-      ${totals.map((t, ci) => {
-        const bal = t - withh - paidTotal;
-        const isRefund = bal < 0;
-        const color = isRefund ? '#1a3a7a' : Math.abs(bal) < 1 ? '#3d6020' : '#a02010';
-        const text  = isRefund ? `${fmt(-bal)} refund` : Math.abs(bal) < 1 ? '✓ even' : `${fmt(bal)} still owed`;
-        return `<td class="paid-bal" style="padding:9px 14px;color:${color}">${text}</td>`;
-      }).join('')}
-    </tr>`;
-  }
-
-  html += `</tfoot></table></div>`;
-  document.getElementById(containerId).innerHTML = html;
+  if (cashChart) cashChart.destroy();
+  cashChart = new Chart($('cashChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Outside cash balance',
+          data: rows.map(r => Math.round(r.cash)),
+          borderColor: '#3B5BDB',
+          backgroundColor: rows.map(r => r.cashShortfall ? 'rgba(153,60,29,0.15)' : 'rgba(59,91,219,0.08)'),
+          fill: true,
+          tension: 0.25,
+          pointBackgroundColor: rows.map(r => r.cashShortfall ? '#993C1D' : '#3B5BDB'),
+          pointRadius: 4,
+        },
+      ]
+    },
+    options: chartOpts(v => fmtK(v))
+  });
 }
 
-// ===== INIT INPUTS =====
-makeInput('inp-annuity',     'Annuity (annual)',                    'annuity',     undefined, 'prorated evenly');
-makeInput('inp-niit',        'NIIT Annuity (1099-R box 7 code D)', 'niit',        undefined, 'annual · Form 8960 line 3');
-makeInput('inp-ss',          'Social Security',                     'ss',          undefined, '85% fed / 0% NJ');
+function chartOpts(tickFmt) {
+  return {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { labels: { font: { size: 11 }, boxWidth: 12 } },
+      tooltip: { callbacks: { label: ctx => ' ' + fmt(ctx.raw) } }
+    },
+    scales: {
+      x: { ticks: { font: { size: 10 } }, grid: { color: '#f0f0ec' } },
+      y: { ticks: { font: { size: 10 }, callback: tickFmt }, grid: { color: '#f0f0ec' } }
+    }
+  };
+}
 
-PERIODS.forEach((p, i) => {
-  makeInput(`inp-div-q${i+1}`,  `${p.label} (${p.range})`, 'divByQ',  i);
-  makeInput(`inp-ltcg-q${i+1}`, `${p.label} (${p.range})`, 'ltcgByQ', i, '', true);
-  makeInput(`inp-st-q${i+1}`,   `${p.label} (${p.range})`, 'stByQ',   i, '', true);
-  makeInput(`inp-conv-q${i+1}`, `${p.label} (${p.range})`, 'convByQ', i);
-  makeInput(`inp-fed-paid-q${i+1}`, `${p.label} (${p.range}) — due ${p.due}`, 'fedPaid', i);
-  makeInput(`inp-nj-paid-q${i+1}`,  `${p.label} (${p.range}) — due ${p.due}`, 'njPaid',  i);
-});
+function renderTable(rows) {
+  $('table-body').innerHTML = rows.map(r => `
+    <tr>
+      <td>${r.year}</td>
+      <td>${r.age}</td>
+      <td><input type="text" inputmode="numeric" value="${r.capGains}"
+            style="width:72px; font-size:12px; padding:3px 4px; border:1px solid #e0e0db; border-radius:5px; text-align:right; font-family:inherit;"
+            onchange="setYearlyOverride(${r.year}, 'capGains', this.value)"></td>
+      <td><input type="text" inputmode="numeric" value="${r.divInt}"
+            style="width:72px; font-size:12px; padding:3px 4px; border:1px solid #e0e0db; border-radius:5px; text-align:right; font-family:inherit;"
+            onchange="setYearlyOverride(${r.year}, 'divInt', this.value)"></td>
+      <td><input type="text" inputmode="numeric" value="${r.medicalExpenses}"
+            style="width:72px; font-size:12px; padding:3px 4px; border:1px solid #e0e0db; border-radius:5px; text-align:right; font-family:inherit;"
+            onchange="setYearlyOverride(${r.year}, 'medical', this.value)"></td>
+      <td>${r.hsaCoveredMedical > 0 ? fmt(r.hsaCoveredMedical) : '—'}</td>
+      <td>${fmt(r.unreimbursedMedical)}</td>
+      <td>${fmtK(r.hsaBalance)}</td>
+      <td>${fmt(r.baseOrdinary)}</td>
+      <td>${fmt(r.conv)}</td>
+      <td>${r.rmdAmt > 0 ? fmt(r.rmdAmt) : '—'}</td>
+      <td>${r.gapWithdrawal > 0 ? fmt(r.gapWithdrawal) : '—'}</td>
+      <td>${fmt(r.magi)}</td>
+      <td><select
+            style="font-size:11px; padding:3px 2px; border:1px solid ${r.capHit ? '#F0997B' : '#e0e0db'}; border-radius:5px; font-family:inherit; max-width:150px;"
+            onchange="setYearlyOverride(${r.year}, 'capType', this.value)">
+            <option value="nj200" ${r.capType === 'nj200' ? 'selected' : ''}>NJ Freeze $200K</option>
+            <option value="nj250" ${r.capType === 'nj250' ? 'selected' : ''}>ANCHOR $250K</option>
+            <option value="irmaa0" ${r.capType === 'irmaa0' ? 'selected' : ''}>IRMAA Std ${fmtK(irmaaLimitForYear(218000, r.year))}</option>
+            <option value="irmaa1" ${r.capType === 'irmaa1' ? 'selected' : ''}>IRMAA T1 ${fmtK(irmaaLimitForYear(274000, r.year))}</option>
+            <option value="irmaa2" ${r.capType === 'irmaa2' ? 'selected' : ''}>IRMAA T2 ${fmtK(irmaaLimitForYear(342000, r.year))}</option>
+            <option value="irmaa3" ${r.capType === 'irmaa3' ? 'selected' : ''}>IRMAA T3 ${fmtK(irmaaLimitForYear(410000, r.year))}</option>
+            <option value="none" ${r.capType === 'none' ? 'selected' : ''}>No cap</option>
+          </select></td>
+      <td>${r.capHit ? '<span class="pill pill-amber">Over</span>' : '<span class="pill pill-green">OK</span>'}</td>
+      <td>${fmt(r.convTax)}</td>
+      <td>${fmt(r.njConvTax)}</td>
+      <td>${fmt(r.totalRmdTax)}</td>
+      <td>${r.irmaaSurcharge > 0 ? fmt(r.irmaaSurcharge) : '—'}</td>
+      <td>${r.niit > 0 ? fmt(r.niit) : '—'}</td>
+      <td>${fmt(r.totalTax + r.niit)}</td>
+      <td>${fmt(r.njTotalTax)}</td>
+      <td>${(r.margR*100).toFixed(0)}%</td>
+      <td>${(r.effRate*100).toFixed(1)}%</td>
+      <td>${fmt(r.livingExpenses)}</td>
+      <td>${fmt(r.cashFlowIn)}</td>
+      <td>${r.cashFlowOut > 0 ? fmt(r.cashFlowOut) : '—'}</td>
+      <td style="${r.netCashFlow < 0 ? 'color:#993C1D; font-weight:600;' : 'color:#0F6E56;'}">${r.netCashFlow >= 0 ? '+' : ''}${fmt(r.netCashFlow)}</td>
+      <td style="${r.cashShortfall ? 'color:#993C1D; font-weight:700;' : ''}">${fmt(r.cash)}${r.cashShortfall ? ' ⚠' : ''}</td>
+      <td>${fmtK(r.trad)}</td>
+      <td>${fmtK(r.roth)}</td>
+      <td style="font-weight:600;">${fmtK(r.trad + r.roth + r.cash + r.hsaBalance)}</td>
+    </tr>`).join('');
+}
 
-makeInput('inp-prior-fed',   '2025 Federal Tax',     'priorFed',    undefined);
-makeInput('inp-prior-nj',    '2025 NJ Tax',          'priorNJ',     undefined);
-makeInput('inp-withholding', '2026 Fed Withholding', 'withholding', undefined, 'from annuity etc.');
+function setTab(tab, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  ['balances','tax','cash','table'].forEach(p => $('panel-'+p).style.display = p === tab ? 'block' : 'none');
+  setTimeout(() => { if(balChart) balChart.resize(); if(taxChart) taxChart.resize(); if(cashChart) cashChart.resize(); }, 30);
+}
+
+// Accepts typed formatting like "$1,741,131.55" — strips $ , spaces; keeps one decimal point.
+function parseMoney(str) {
+  const cleaned = String(str).replace(/[^0-9.]/g, '');
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? 0 : Math.round(n);
+}
+function onBalanceInput(which, el) {
+  const num = parseMoney(el.value);
+  if (which === 'trad') STATE.tradIRA = num;
+  if (which === 'roth') STATE.rothIRA = num;
+  if (which === 'cash') STATE.outsideCash = num;
+  if (which === 'hsa') STATE.hsaBalance = num;
+  update();
+}
+// Re-display as $1,234,567 once the person leaves the box (not while typing).
+function formatBalanceInput(el) {
+  el.value = '$' + parseMoney(el.value).toLocaleString('en-US');
+}
+
+function askClaude() {
+  const rows = project();
+  const r0 = rows[0], rLast = rows[rows.length - 1];
+  const conv = parseInt($('conv-slider').value);
+  const tradGrowth = $('trad-growth-input').value;
+  const rothGrowth = $('roth-growth-input').value;
+  const filing = $('filing-select').value === 'mfj' ? 'married filing jointly' : 'single';
+  const shortfallNote = rows.some(r => r.cashShortfall) ? ` Cash shortfall projected starting ${rows.find(r => r.cashShortfall).year}.` : ' No cash shortfall projected.';
+  const totalIrmaaSurcharge = rows.reduce((s, r) => s + r.irmaaSurcharge, 0);
+  const irmaaNote = totalIrmaaSurcharge > 0 ? ` Total projected IRMAA surcharge over ${rows.length} years: ${fmt(totalIrmaaSurcharge)} (both spouses on Medicare, 2-year MAGI lookback applied).` : ` No IRMAA surcharge projected over ${rows.length} years.`;
+  const livingExp = parseInt($('living-expenses-input').value) || 0;
+  const prompt = `Here's my Roth conversion forecast: Traditional IRA ${fmt(STATE.tradIRA)} growing at ${tradGrowth}%, Roth IRA ${fmt(STATE.rothIRA)} growing at ${rothGrowth}%, outside cash ${fmt(STATE.outsideCash)}, annual living expenses ${fmt(livingExp)}, converting ${fmt(conv)}/year, filing ${filing}. Income schedule: 2026 $31,200 annuity, 2027 ~$70,200 gross (Vitaly SS starts Mar, $39,000 for 10 months), 2028 ~$100,925 gross (Vitaly full $46,800 + Victoria SS starts Aug at $22,925 for 5 months), 2029+ $133,020 gross (both full year). Year 1: MAGI ${fmt(r0.magi)}, federal conversion tax ${fmt(r0.convTax)}, NJ conversion tax ${fmt(r0.njConvTax)}, NIIT ${fmt(r0.niit)}, at ${(r0.margR*100).toFixed(0)}% federal marginal rate, IRMAA hit: ${r0.irmaaHit}.${shortfallNote}${irmaaNote} By ${rows.length} years out (${rLast.year}, age ${rLast.age}): Traditional IRA ${fmtK(rLast.trad)}, Roth IRA ${fmtK(rLast.roth)}. What's your assessment? Any adjustments to consider given NJ residency, the SS phase-in, IRMAA management (including the 2-year lookback on Medicare premiums), NIIT exposure on investment income, and cash flow to cover conversion taxes, living expenses, and IRMAA surcharges?`;
+
+  if (typeof sendPrompt === 'function') {
+    // Running inside Claude.ai — send directly to chat
+    sendPrompt(prompt);
+  } else {
+    // Running standalone (e.g. on Netlify) — copy to clipboard instead
+    navigator.clipboard.writeText(prompt).then(() => {
+      alert('Prompt copied to clipboard! Paste it into a Claude.ai chat to get an analysis.');
+    }).catch(() => {
+      // Fallback if clipboard API is blocked
+      window.prompt('Copy this prompt and paste into Claude.ai:', prompt);
+    });
+  }
+}
 
 update();
 </script>
